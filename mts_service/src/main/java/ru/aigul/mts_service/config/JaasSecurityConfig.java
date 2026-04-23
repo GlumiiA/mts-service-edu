@@ -66,9 +66,10 @@ public class JaasSecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http,
+                                           JaasAuthenticationProvider jaasAuthenticationProvider) throws Exception {
         http
-                .authenticationProvider(jaasAuthenticationProvider())
+                .authenticationProvider(jaasAuthenticationProvider)
                 .csrf(csrf -> csrf.disable())
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(authz -> authz

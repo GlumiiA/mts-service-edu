@@ -39,3 +39,7 @@ out/
 
 # Local environment files
 .env
+
+# Narayana/JTA transaction logs
+ObjectStore/
+transaction-logs/

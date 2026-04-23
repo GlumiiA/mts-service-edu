@@ -4,10 +4,10 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import ru.aigul.mts_service.billing.model.Balance;
+import ru.aigul.mts_service.billing.repository.BalanceRepository;
 import ru.aigul.mts_service.dto.BalanceResponse;
-import ru.aigul.mts_service.model.Balance;
 import ru.aigul.mts_service.model.User;
-import ru.aigul.mts_service.repository.BalanceRepository;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;

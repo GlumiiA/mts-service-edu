@@ -6,19 +6,22 @@ import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
+import ru.aigul.mts_service.billing.model.Balance;
+import ru.aigul.mts_service.billing.model.BillingTransaction;
+import ru.aigul.mts_service.billing.model.TransactionType;
+import ru.aigul.mts_service.billing.repository.BalanceRepository;
+import ru.aigul.mts_service.billing.repository.BillingTransactionRepository;
 import ru.aigul.mts_service.dto.CursorPage;
 import ru.aigul.mts_service.dto.application.*;
 import ru.aigul.mts_service.exception.*;
-
 import ru.aigul.mts_service.mapper.ApplicationMapper;
 import ru.aigul.mts_service.model.*;
 import ru.aigul.mts_service.repository.*;
 
 import java.math.BigDecimal;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-
-import java.util.Collections;
 import java.util.Optional;
 
 @Service
@@ -30,6 +33,7 @@ public class ApplicationService {
     private final TariffCityPriceRepository tariffCityPriceRepository;
     private final UserRepository userRepository;
     private final BalanceRepository balanceRepository;
+    private final BillingTransactionRepository billingTransactionRepository;
     private final ServiceRepository serviceRepository;
     private final ApplicationMapper applicationMapper;
     private final UserService userService;
@@ -84,6 +88,7 @@ public class ApplicationService {
         application.setTariff(tariff);
         application.setAddress(dto.getAddress());
         application.setStatus(ApplicationStatus.PENDING);
+        application.setLockedPrice(totalPrice);
         application.setAdditionalServices(new HashSet<>(additionalServices));
 
         application = applicationRepository.save(application);
@@ -109,8 +114,9 @@ public class ApplicationService {
         return applicationMapper.toDetailDto(application);
     }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional
     public ApplicationDto approve(Long applicationId) {
+        // DB1 mts_db
         Application application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
 
@@ -118,12 +124,37 @@ public class ApplicationService {
             throw new InvalidApplicationStatusException("Application already processed");
         }
 
+        BigDecimal totalPrice = application.getLockedPrice();
+
+        // DB2 billing_db
+        Long userId = application.getUser().getId();
+        Balance balance = balanceRepository.findByUserId(userId)
+                .orElseThrow(InsufficientFundsException::new);
+
+        if (balance.getAmount().compareTo(totalPrice) < 0) {
+            throw new InsufficientFundsException();
+        }
+
+        balance.setAmount(balance.getAmount().subtract(totalPrice));
+        balanceRepository.save(balance);
+
+        BillingTransaction billingTx = new BillingTransaction();
+        billingTx.setUserId(userId);
+        billingTx.setApplicationId(applicationId);
+        billingTx.setAmount(totalPrice);
+        billingTx.setType(TransactionType.DEBIT);
+        billingTx.setDescription("Payment for application #" + applicationId
+                + ", tariff: " + application.getTariff().getName());
+        billingTransactionRepository.save(billingTx);
+
+        // DB1 update status
         application.setStatus(ApplicationStatus.APPROVED);
         application = applicationRepository.save(application);
+
         return applicationMapper.toDto(application);
     }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
+    @Transactional
     public ApplicationDto reject(Long applicationId, ApplicationRejectDto dto) {
         Application application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
