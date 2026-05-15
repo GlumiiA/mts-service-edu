@@ -7,10 +7,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import ru.aigul.mts_service.billing.model.Balance;
-import ru.aigul.mts_service.billing.model.BillingTransaction;
-import ru.aigul.mts_service.billing.model.TransactionType;
 import ru.aigul.mts_service.billing.repository.BalanceRepository;
-import ru.aigul.mts_service.billing.repository.BillingTransactionRepository;
 import ru.aigul.mts_service.dto.CursorPage;
 import ru.aigul.mts_service.dto.application.*;
 import ru.aigul.mts_service.exception.*;
@@ -23,6 +20,7 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -31,12 +29,11 @@ public class ApplicationService {
     private final ApplicationRepository applicationRepository;
     private final TariffRepository tariffRepository;
     private final TariffCityPriceRepository tariffCityPriceRepository;
-    private final UserRepository userRepository;
     private final BalanceRepository balanceRepository;
-    private final BillingTransactionRepository billingTransactionRepository;
     private final ServiceRepository serviceRepository;
     private final ApplicationMapper applicationMapper;
     private final UserService userService;
+    private final OutboxService outboxService;
 
     public List<Application> getApplicationsForUserEmail(String email) {
         Optional<User> userOpt = userService.findByEmail(email);
@@ -70,8 +67,9 @@ public class ApplicationService {
         BigDecimal totalPrice = tariffPrice;
 
         List<ru.aigul.mts_service.model.Service> additionalServices = List.of();
-        if (!dto.getAdditionalServiceIds().isEmpty()) {
-            additionalServices = serviceRepository.findAllById(dto.getAdditionalServiceIds());
+        List<Long> additionalIds = dto.getAdditionalServiceIds();
+        if (additionalIds != null && !additionalIds.isEmpty()) {
+            additionalServices = serviceRepository.findAllById(additionalIds);
             for (ru.aigul.mts_service.model.Service s : additionalServices) {
                 totalPrice = totalPrice.add(s.getPrice());
             }
@@ -115,46 +113,6 @@ public class ApplicationService {
     }
 
     @Transactional
-    public ApplicationDto approve(Long applicationId) {
-        // DB1 mts_db
-        Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
-
-        if (application.getStatus() != ApplicationStatus.PENDING) {
-            throw new InvalidApplicationStatusException("Application already processed");
-        }
-
-        BigDecimal totalPrice = application.getLockedPrice();
-
-        // DB2 billing_db
-        Long userId = application.getUser().getId();
-        Balance balance = balanceRepository.findByUserId(userId)
-                .orElseThrow(InsufficientFundsException::new);
-
-        if (balance.getAmount().compareTo(totalPrice) < 0) {
-            throw new InsufficientFundsException();
-        }
-
-        balance.setAmount(balance.getAmount().subtract(totalPrice));
-        balanceRepository.save(balance);
-
-        BillingTransaction billingTx = new BillingTransaction();
-        billingTx.setUserId(userId);
-        billingTx.setApplicationId(applicationId);
-        billingTx.setAmount(totalPrice);
-        billingTx.setType(TransactionType.DEBIT);
-        billingTx.setDescription("Payment for application #" + applicationId
-                + ", tariff: " + application.getTariff().getName());
-        billingTransactionRepository.save(billingTx);
-
-        // DB1 update status
-        application.setStatus(ApplicationStatus.APPROVED);
-        application = applicationRepository.save(application);
-
-        return applicationMapper.toDto(application);
-    }
-
-    @Transactional
     public ApplicationDto reject(Long applicationId, ApplicationRejectDto dto) {
         Application application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
@@ -167,5 +125,19 @@ public class ApplicationService {
         application.setRejectReason(dto.getReason());
         application = applicationRepository.save(application);
         return applicationMapper.toDto(application);
+    }
+
+    @Transactional
+    public String requestApproveAsync(Long applicationId, String requestedBy) {
+        Application application = applicationRepository.findById(applicationId)
+                .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
+
+        if (application.getStatus() != ApplicationStatus.PENDING) {
+            throw new InvalidApplicationStatusException("Application already processed");
+        }
+
+        String correlationId = UUID.randomUUID().toString();
+        outboxService.enqueueApprovalRequested(applicationId, requestedBy, correlationId);
+        return correlationId;
     }
 }

@@ -76,10 +76,12 @@ public class DemoService {
         boolean hasDebitTx = txs.stream()
                 .anyMatch(tx -> tx.getType() == ru.aigul.mts_service.billing.model.TransactionType.DEBIT);
 
-        if (app.getStatus() == ApplicationStatus.APPROVED) {
+        if (app.getStatus() == ApplicationStatus.APPROVED || app.getStatus() == ApplicationStatus.CONNECTED) {
             consistent = hasDebitTx;
         } else if (app.getStatus() == ApplicationStatus.PENDING
-                || app.getStatus() == ApplicationStatus.REJECTED) {
+                || app.getStatus() == ApplicationStatus.PROCESSING
+                || app.getStatus() == ApplicationStatus.REJECTED
+                || app.getStatus() == ApplicationStatus.FAILED_EXTERNAL) {
             consistent = !hasDebitTx;
         } else {
             consistent = true;

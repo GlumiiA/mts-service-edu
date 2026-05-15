@@ -39,6 +39,8 @@ tags:
     description: Баланс и платежи
   - name: users
     description: Управление пользователями (регистрация)
+  - name: one-c-integration
+    description: Интеграция с 1C (GET sync статус, управление отклонениями, ретраи, ошибки)
 
 paths:
 
@@ -419,18 +421,28 @@ paths:
   /applications/{applicationId}/approve:
     post:
       tags: [applications]
-      summary: Одобрить заявку (Менеджер)
+      summary: Запросить одобрение заявки асинхронно (Менеджер)
       security:
         - bearerAuth: []
       parameters:
         - $ref: '#/components/parameters/ApplicationId'
       responses:
-        '200':
-          description: Заявка одобрена
+        '202':
+          description: Команда на одобрение принята в асинхронную обработку
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Application'
+                type: object
+                required: [applicationId, correlationId, status]
+                properties:
+                  applicationId:
+                    type: integer
+                    format: int64
+                  correlationId:
+                    type: string
+                  status:
+                    type: string
+                    example: ACCEPTED
         '409':
           description: Заявка уже обработана
 
@@ -722,32 +734,247 @@ paths:
         '422':
           description: Ошибка подключения
 
-  /admin/services:
-    post:
-      tags: [tariffs]
-      summary: Создать дополнительную услугу
-      description: Создаёт запись в справочнике дополнительных услуг.
-      security:
-        - bearerAuth: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: '#/components/schemas/ServiceCreate'
-      responses:
-        '201':
-          description: Услуга создана
-          content:
-            application/json:
-              schema:
-                type: object
-                properties:
-                  id:
-                    type: string
-                    example: "123"
-        '422':
-          description: Ошибка валидации
+   /admin/services:
+     post:
+       tags: [tariffs]
+       summary: Создать дополнительную услугу
+       description: Создаёт запись в справочнике дополнительных услуг.
+       security:
+         - bearerAuth: []
+       requestBody:
+         required: true
+         content:
+           application/json:
+             schema:
+               $ref: '#/components/schemas/ServiceCreate'
+       responses:
+         '201':
+           description: Услуга создана
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   id:
+                     type: string
+                     example: "123"
+         '422':
+           description: Ошибка валидации
+
+   # — 1C INTEGRATION API ——————————————————————
+
+   /api/one-c/sync/application/{applicationId}:
+     get:
+       tags: [one-c-integration]
+       summary: Получить историю синхронизации заявки с 1С
+       description: |
+         Возвращает список попыток синхронизации конкретной заявки с 1C системой.
+         Отслеживает: external_id, sync_status, retry_count, ошибки.
+       parameters:
+         - name: applicationId
+           in: path
+           required: true
+           schema:
+             type: integer
+             format: int64
+         - name: page
+           in: query
+           schema:
+             type: integer
+             default: 0
+         - name: size
+           in: query
+           schema:
+             type: integer
+             default: 20
+       responses:
+         '200':
+           description: Пагинированный список синхронизаций
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   content:
+                     type: array
+                     items:
+                       $ref: '#/components/schemas/OneCyncHistoryDTO'
+                   totalElements:
+                     type: integer
+                   totalPages:
+                     type: integer
+         '404':
+           description: Заявка не найдена
+
+   /api/one-c/sync/external/{externalId}:
+     get:
+       tags: [one-c-integration]
+       summary: Получить синхронизацию по external ID 1C
+       description: Поиск синхронизации по уникальному идентификатору из 1C
+       parameters:
+         - name: externalId
+           in: path
+           required: true
+           schema:
+             type: string
+       responses:
+         '200':
+           description: Найдена синхронизация
+           content:
+             application/json:
+               schema:
+                 $ref: '#/components/schemas/OneCyncHistoryDTO'
+         '404':
+           description: Синхронизация не найдена
+
+   /api/one-c/errors/stats:
+     get:
+       tags: [one-c-integration]
+       summary: Статистика ошибок интеграции
+       description: Возвращает количество ошибок по типам (INSUFFICIENT_FUNDS, TIMEOUT, NETWORK_ERROR, etc.)
+       responses:
+         '200':
+           description: Статистика ошибок
+           content:
+             application/json:
+               schema:
+                 type: array
+                 items:
+                   type: object
+                   properties:
+                     errorDetail:
+                       type: string
+                       enum: [INSUFFICIENT_FUNDS, TIMEOUT, VALIDATION_ERROR, NETWORK_ERROR, UNKNOWN_ERROR]
+                     count:
+                       type: integer
+
+   /api/one-c/rejected:
+     get:
+       tags: [one-c-integration]
+       summary: Список отклоненных заявок (требующих review)
+       description: |
+         Возвращает заявки, отклоненные 1C системой (например, due to insufficient funds).
+         Требуют manual review от администратора.
+       parameters:
+         - name: page
+           in: query
+           schema:
+             type: integer
+             default: 0
+         - name: size
+           in: query
+           schema:
+             type: integer
+             default: 20
+       responses:
+         '200':
+           description: Пагинированный список отклонений
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   content:
+                     type: array
+                     items:
+                       $ref: '#/components/schemas/RejectedApplicationDTO'
+                   totalElements:
+                     type: integer
+
+   /api/one-c/rejected/count:
+     get:
+       tags: [one-c-integration]
+       summary: Количество заявок на review
+       description: Быстрая проверка кол-ва очереди manual review
+       responses:
+         '200':
+           description: Количество
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   pendingReviewCount:
+                     type: integer
+
+   /api/one-c/rejected/application/{applicationId}:
+     get:
+       tags: [one-c-integration]
+       summary: Получить все отклонения конкретной заявки
+       parameters:
+         - name: applicationId
+           in: path
+           required: true
+           schema:
+             type: integer
+             format: int64
+       responses:
+         '200':
+           description: Список отклонений
+           content:
+             application/json:
+               schema:
+                 type: array
+                 items:
+                   $ref: '#/components/schemas/RejectedApplicationDTO'
+
+   /api/one-c/sync/{syncId}/retry:
+     post:
+       tags: [one-c-integration]
+       summary: Ручной ретрай синхронизации
+       description: |
+         Администратор может принудительно переотправить заявку в 1C.
+         API сбросит retry_count и попробует синхронизацию сразу.
+       parameters:
+         - name: syncId
+           in: path
+           required: true
+           schema:
+             type: integer
+             format: int64
+       responses:
+         '200':
+           description: Ретрай запланирован
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   message:
+                     type: string
+                     example: "Retry scheduled"
+         '404':
+           description: Запись синхронизации не найдена
+
+   /api/one-c/rejected/{rejectionId}/review:
+     post:
+       tags: [one-c-integration]
+       summary: Отметить отклонение как reviewed
+       description: |
+         Администратор проверил отклоненную заявку, принял решение и отмечает факт review.
+       parameters:
+         - name: rejectionId
+           in: path
+           required: true
+           schema:
+             type: integer
+             format: int64
+       requestBody:
+         required: true
+         content:
+           application/json:
+             schema:
+               $ref: '#/components/schemas/ReviewRejectionRequest'
+       responses:
+         '200':
+           description: Отклонение отмечено как reviewed
+           content:
+             application/json:
+               schema:
+                 type: object
+                 properties:
+                   message:
+                     type: string
 
 
 components:
@@ -1249,24 +1476,130 @@ components:
           minLength: 6
 
     UserResponse:
-      type: object
-      required: [id, email, name, role, created_at]
-      properties:
-        id:
-          type: string
-          example: "123"
-        email:
-          type: string
-          format: email
-          example: "user@example.com"
-        name:
-          type: string
-          example: "Иван Иванов"
-        role:
-          type: string
-          example: "USER"
-        created_at:
-          type: string
-          format: date-time
+       type: object
+       required: [id, email, name, role, created_at]
+       properties:
+         id:
+           type: string
+           example: "123"
+         email:
+           type: string
+           format: email
+           example: "user@example.com"
+         name:
+           type: string
+           example: "Иван Иванов"
+         role:
+           type: string
+           example: "USER"
+         created_at:
+           type: string
+           format: date-time
+
+     # — 1C INTEGRATION SCHEMAS ———————————————
+
+     OneCyncHistoryDTO:
+       type: object
+       description: История синхронизации заявки с 1C
+       properties:
+         id:
+           type: integer
+           format: int64
+         applicationId:
+           type: integer
+           format: int64
+         externalId:
+           type: string
+           description: Уникальный ID в 1C системе
+           nullable: true
+         syncStatus:
+           type: string
+           enum: [PENDING, SUCCESS, INSUFFICIENT_FUNDS, REJECTED, RETRY, DLQ]
+           description: |
+             - PENDING: ожидание обработки
+             - SUCCESS: успешно синхронизирована
+             - INSUFFICIENT_FUNDS: отклонена, недостаточно средств
+             - REJECTED: отклонена 1C
+             - RETRY: ошибка, будет повторена
+             - DLQ: Dead Letter Queue, максимум ретраев превышен
+         syncDirection:
+           type: string
+           enum: [TO_1C, FROM_1C]
+         retryCount:
+           type: integer
+           description: Текущее число попыток
+         maxRetries:
+           type: integer
+           description: Максимум попыток (default 5)
+         lastError:
+           type: string
+           nullable: true
+           description: Последнее сообщение об ошибке
+         lastSyncAt:
+           type: string
+           format: date-time
+           nullable: true
+           description: Когда была последняя успешная синхронизация
+         nextRetryAt:
+           type: string
+           format: date-time
+           description: Когда будет следующего retry (exponential backoff 2^retryCount с)
+         createdAt:
+           type: string
+           format: date-time
+         updatedAt:
+           type: string
+           format: date-time
+
+     RejectedApplicationDTO:
+       type: object
+       description: Отклоненная заявка, требующая manual review
+       properties:
+         id:
+           type: integer
+           format: int64
+         applicationId:
+           type: integer
+           format: int64
+         syncHistoryId:
+           type: integer
+           format: int64
+           nullable: true
+         rejectionReason:
+           type: string
+           example: "Insufficient funds in 1C system"
+         errorCode:
+           type: string
+           example: "INSUFFICIENT_FUNDS"
+         manualReviewRequired:
+           type: boolean
+           default: true
+         reviewedAt:
+           type: string
+           format: date-time
+           nullable: true
+         reviewedBy:
+           type: string
+           nullable: true
+         createdAt:
+           type: string
+           format: date-time
+
+     ReviewRejectionRequest:
+       type: object
+       required: [reviewedBy]
+       properties:
+         reviewedBy:
+           type: string
+           example: "admin@local"
+           description: Почта администратора, проводящего review
+         notes:
+           type: string
+           nullable: true
+           description: Заметки для истории
+         approve:
+           type: boolean
+           default: false
+           description: Одобрить ли для дальнейшей обработки
 
 

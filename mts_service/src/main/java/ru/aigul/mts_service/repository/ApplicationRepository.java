@@ -2,16 +2,23 @@ package ru.aigul.mts_service.repository;
 
 import org.springframework.data.domain.Limit;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import ru.aigul.mts_service.model.Application;
 import ru.aigul.mts_service.model.User;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import ru.aigul.mts_service.model.ApplicationStatus;
 
+import jakarta.persistence.LockModeType;
 import java.util.List;
+import java.util.Optional;
 
 public interface ApplicationRepository extends JpaRepository<Application, Long> {
     List<Application> findAllByUserOrderByCreatedAtDesc(User user);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Application a LEFT JOIN FETCH a.user LEFT JOIN FETCH a.tariff WHERE a.id = :id")
+    Optional<Application> findByIdForUpdate(@Param("id") Long id);
 
     @Query("""
             SELECT a FROM Application a

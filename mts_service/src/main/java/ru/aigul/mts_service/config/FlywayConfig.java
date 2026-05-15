@@ -26,21 +26,27 @@ public class FlywayConfig {
     @Value("${billing.datasource.xa.password}")
     private String billingPassword;
 
-    @Bean(initMethod = "migrate")
+    @Bean
     public Flyway primaryFlyway() {
-        return Flyway.configure()
+        Flyway flyway = Flyway.configure()
                 .dataSource(primaryUrl, primaryUser, primaryPassword)
                 .locations("classpath:db/migration/primary")
                 .baselineOnMigrate(true)
                 .load();
+        // Repair checksum mismatches before migration
+        flyway.repair();
+        flyway.migrate();
+        return flyway;
     }
 
-    @Bean(initMethod = "migrate")
+    @Bean
     public Flyway billingFlyway() {
-        return Flyway.configure()
+        Flyway flyway = Flyway.configure()
                 .dataSource(billingUrl, billingUser, billingPassword)
                 .locations("classpath:db/migration/billing")
                 .baselineOnMigrate(true)
                 .load();
+        flyway.migrate();
+        return flyway;
     }
 }

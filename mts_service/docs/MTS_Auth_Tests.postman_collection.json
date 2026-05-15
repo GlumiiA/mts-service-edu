@@ -13,6 +13,7 @@
     { "key": "adminEmail", "value": "admin@test.com" },
     { "key": "adminPassword", "value": "password" },
     { "key": "applicationId", "value": "" },
+    { "key": "approvalCorrelationId", "value": "" },
     { "key": "applicationIdForReject", "value": "" },
     { "key": "newTariffId", "value": "" },
     { "key": "poorUserEmail", "value": "pooruser@test.com" },
@@ -25,15 +26,18 @@
       "name": "1. \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f (\u043f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u044d\u043d\u0434\u043f\u043e\u0438\u043d\u0442)",
       "item": [
         {
-          "name": "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u043d\u043e\u0432\u043e\u0433\u043e \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044f (\u0431\u0435\u0437 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438) \u2192 201",
+          "name": "Регистрация нового пользователя → 201",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
             "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] },
             "body": {
               "mode": "raw",
               "raw": "{\n  \"email\": \"newuser_{{$timestamp}}@test.com\",\n  \"name\": \"Test User\",\n  \"password\": \"password123\"\n}"
-            }
+            },
+            "auth": { "type": "noauth" }
           },
           "event": [
             {
@@ -41,7 +45,7 @@
               "script": {
                 "exec": [
                   "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
-                  "pm.test('\u0420\u043e\u043b\u044c \u2014 USER', () => {",
+                  "pm.test('Роль — USER', () => {",
                   "  const body = pm.response.json();",
                   "  pm.expect(body.role).to.eql('USER');",
                   "});"
@@ -51,7 +55,7 @@
           ]
         },
         {
-          "name": "\u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f \u0434\u0443\u0431\u043b\u0438\u043a\u0430\u0442\u0430 email \u2192 409",
+          "name": "Регистрация дубликата email → 409",
           "request": {
             "method": "POST",
             "header": [{ "key": "Content-Type", "value": "application/json" }],
@@ -1593,10 +1597,13 @@
               "listen": "test",
               "script": {
                 "exec": [
-                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
-                  "pm.test('Статус — APPROVED', () => {",
+                  "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('Тело содержит applicationId, correlationId и status=ACCEPTED', () => {",
                   "  const body = pm.response.json();",
-                  "  pm.expect(body.status).to.eql('APPROVED');",
+                  "  pm.expect(body.applicationId).to.eql(Number(pm.collectionVariables.get('applicationId')));",
+                  "  pm.expect(body).to.have.property('correlationId');",
+                  "  pm.expect(body.status).to.eql('ACCEPTED');",
+                  "  pm.collectionVariables.set('approvalCorrelationId', body.correlationId);",
                   "});"
                 ]
               }

@@ -49,8 +49,10 @@ public class ApplicationController {
 
     @PostMapping("/{applicationId}/approve")
     @PreAuthorize("hasAuthority('APPLICATION_APPROVE')")
-    public ResponseEntity<ApplicationDto> approve(@PathVariable Long applicationId) {
-        return ResponseEntity.ok(applicationService.approve(applicationId));
+    public ResponseEntity<AsyncApprovalAcceptedDto> approve(Authentication auth, @PathVariable Long applicationId) {
+        String correlationId = applicationService.requestApproveAsync(applicationId, auth.getName());
+        AsyncApprovalAcceptedDto body = new AsyncApprovalAcceptedDto(applicationId, correlationId, "ACCEPTED");
+        return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
     }
 
     @PostMapping("/{applicationId}/reject")

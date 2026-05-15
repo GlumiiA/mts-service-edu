@@ -25,6 +25,71 @@ services:
     volumes:
       - billing_db_data:/var/lib/postgresql/data
 
+  rabbitmq:
+    image: rabbitmq:4.1-management
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbitmq
+      RABBITMQ_DEFAULT_PASS: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    command: >
+      sh -c "rabbitmq-plugins enable --offline rabbitmq_amqp1_0 && rabbitmq-server"
+    volumes:
+      - ./docker/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf:ro
+      - ./docker/rabbitmq/definitions.json:/etc/rabbitmq/definitions.json:ro
+      - rabbitmq_data:/var/lib/rabbitmq
+
+  mts_service_node1:
+    profiles: ["app-cluster"]
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: mts_service_node1
+    environment:
+      SERVER_PORT: 8081
+      SPRING_DATASOURCE_URL: jdbc:postgresql://mts_db:5432/mts_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      BILLING_DATASOURCE_URL: jdbc:postgresql://billing_db:5432/billing_db
+      BILLING_DATASOURCE_USERNAME: postgres
+      BILLING_DATASOURCE_PASSWORD: postgres
+      APP_MESSAGING_BROKER_URL: amqp://rabbitmq:5672
+      APP_MESSAGING_USERNAME: rabbitmq
+      APP_MESSAGING_PASSWORD: rabbitmq
+    ports:
+      - "8081:8081"
+    depends_on:
+      - mts_db
+      - billing_db
+      - rabbitmq
+
+  mts_service_node2:
+    profiles: ["app-cluster"]
+    build:
+      context: .
+      dockerfile: Dockerfile.local
+    container_name: mts_service_node2
+    environment:
+      SERVER_PORT: 8082
+      SPRING_DATASOURCE_URL: jdbc:postgresql://mts_db:5432/mts_db
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres
+      BILLING_DATASOURCE_URL: jdbc:postgresql://billing_db:5432/billing_db
+      BILLING_DATASOURCE_USERNAME: postgres
+      BILLING_DATASOURCE_PASSWORD: postgres
+      APP_MESSAGING_BROKER_URL: amqp://rabbitmq:5672
+      APP_MESSAGING_USERNAME: rabbitmq
+      APP_MESSAGING_PASSWORD: rabbitmq
+    ports:
+      - "8082:8082"
+    depends_on:
+      - mts_db
+      - billing_db
+      - rabbitmq
+
 volumes:
   mts_db_data:
   billing_db_data:
+  rabbitmq_data:
