@@ -20,7 +20,6 @@ import ru.aigul.mts_service.service.ApplicationService;
 import ru.aigul.mts_service.service.BalanceService;
 
 import java.util.List;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 import jakarta.validation.Valid;
@@ -51,13 +50,9 @@ public class AccountController {
     @PostMapping(path = "/balance/top-up", consumes = MediaType.APPLICATION_JSON_VALUE)
     @PreAuthorize("hasAuthority('ACCOUNT_TOPUP')")
     public ResponseEntity<PaymentResponse> topUpBalance(@AuthenticationPrincipal String email, @Valid @RequestBody TopUpRequest req) {
-        Optional<String> paymentUrlOpt = balanceService.createTopUpPayment(email, req.getAmount());
-
-        if (paymentUrlOpt.isEmpty()) {
-            return ResponseEntity.badRequest().build();
-        }
-
-        PaymentResponse resp = new PaymentResponse(paymentUrlOpt.get());
+        String paymentUrl = balanceService.createTopUpPayment(email, req.getAmount())
+                .orElseThrow(() -> new IllegalArgumentException("Amount must be greater than zero"));
+        PaymentResponse resp = new PaymentResponse(paymentUrl);
         return ResponseEntity.ok(resp);
     }
 }

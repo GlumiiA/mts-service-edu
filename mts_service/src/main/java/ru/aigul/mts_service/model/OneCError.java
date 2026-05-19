@@ -11,9 +11,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 
-/**
- * Stores detailed error information from 1C integration attempts.
- */
+
 @Entity
 @Table(name = "one_c_errors")
 @Data
@@ -26,28 +24,17 @@ public class OneCError {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    /**
-     * Reference to sync history record
-     */
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "sync_history_id", nullable = false)
     private OneCyncHistory syncHistory;
 
-    /**
-     * Error code from 1C system
-     */
     @Column(length = 50)
     private String errorCode;
 
-    /**
-     * Human-readable error message
-     */
     @Column(nullable = false, columnDefinition = "TEXT")
     private String errorMessage;
 
-    /**
-     * Classified error type
-     */
+
     @Enumerated(EnumType.STRING)
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(nullable = false)

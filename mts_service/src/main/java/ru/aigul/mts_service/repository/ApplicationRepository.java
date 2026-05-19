@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ApplicationRepository extends JpaRepository<Application, Long> {
+    @Query("SELECT a FROM Application a JOIN FETCH a.user JOIN FETCH a.tariff WHERE a.user = :user ORDER BY a.createdAt DESC")
     List<Application> findAllByUserOrderByCreatedAtDesc(User user);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

@@ -9,5 +9,5 @@ import java.util.List;
 public class BillingStateDto {
     private BigDecimal balance;
     private List<TransactionDto> transactions;
-    private final String source = "billing_db";
+    private final String source = "primary_db";
 }

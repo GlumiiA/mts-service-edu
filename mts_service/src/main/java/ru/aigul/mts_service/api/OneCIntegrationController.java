@@ -3,7 +3,6 @@ package ru.aigul.mts_service.api;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,7 +13,7 @@ import ru.aigul.mts_service.model.*;
 import ru.aigul.mts_service.repository.OneCErrorRepository;
 import ru.aigul.mts_service.repository.OneCyncHistoryRepository;
 import ru.aigul.mts_service.repository.RejectedApplicationRepository;
-import ru.aigul.mts_service.service.integration.OneCIntegrationService;
+import ru.aigul.mts_service.integration1С.OneCIntegrationService;
 
 import java.time.LocalDateTime;
 import java.util.List;

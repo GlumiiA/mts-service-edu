@@ -1,4 +1,4 @@
-package ru.aigul.mts_service.service.integration;
+package ru.aigul.mts_service.integration1С;
 
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.Job;
@@ -12,18 +12,7 @@ import ru.aigul.mts_service.repository.OneCyncHistoryRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * Quartz Job for periodic status reconciliation with 1C system.
- * 
- * Runs periodically to:
- * 1. Check status of all active syncs with 1C
- * 2. Verify that external_id is still valid
- * 3. Identify stuck/abandoned requests
- * 4. Automatically recover from network issues
- * 
- * This job runs only once across cluster thanks to Quartz JDBC JobStore
- * clustering support.
- */
+
 @Component
 @Slf4j
 public class OneCStatusReconciliationJob implements Job {
@@ -34,7 +23,6 @@ public class OneCStatusReconciliationJob implements Job {
     @Autowired
     private OneCIntegrationService integrationService;
 
-    // Timeout in hours - if no update in this period, mark for manual review
     private static final int SYNC_TIMEOUT_HOURS = 24;
 
     @Override
@@ -52,20 +40,15 @@ public class OneCStatusReconciliationJob implements Job {
         }
     }
 
-    /**
-     * Perform status reconciliation with 1C
-     */
+
     private void performReconciliation() {
-        // Find all pending syncs that haven't been updated recently
         LocalDateTime timeoutThreshold = LocalDateTime.now().minusHours(SYNC_TIMEOUT_HOURS);
-        
-        // Query for stuck records
+
         List<OneCyncHistory> stuckRecords = syncHistoryRepository.findBySyncStatus(
             ru.aigul.mts_service.model.OneCIntegrationStatus.PENDING
         );
         
         for (OneCyncHistory record : stuckRecords) {
-            // Check if record has timed out
             if (record.getUpdatedAt().isBefore(timeoutThreshold)) {
                 log.warn("Stuck sync record detected: id={}, externalId={}, age={} hours",
                     record.getId(), record.getExternalId(),
@@ -73,7 +56,7 @@ public class OneCStatusReconciliationJob implements Job {
                 );
                 
                 try {
-                    // Attempt to check status with 1C
+
                     integrationService.checkStatusWithOneC(record);
                     
                 } catch (Exception e) {
@@ -81,14 +64,10 @@ public class OneCStatusReconciliationJob implements Job {
                 }
             }
         }
-        
-        // Also check all active syncs for status updates
+
         checkActiveSyncsStatus();
     }
 
-    /**
-     * Check status of all active syncs with 1C system
-     */
     private void checkActiveSyncsStatus() {
         log.debug("Checking status of active syncs with 1C");
         

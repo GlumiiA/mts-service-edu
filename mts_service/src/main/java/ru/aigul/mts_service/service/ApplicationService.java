@@ -10,6 +10,7 @@ import ru.aigul.mts_service.billing.model.Balance;
 import ru.aigul.mts_service.billing.repository.BalanceRepository;
 import ru.aigul.mts_service.dto.CursorPage;
 import ru.aigul.mts_service.dto.application.*;
+import ru.aigul.mts_service.messaging.dto.ApprovalRequestedMessage;
 import ru.aigul.mts_service.exception.*;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
 import ru.aigul.mts_service.model.*;
@@ -21,6 +22,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.time.OffsetDateTime;
 
 @Service
 @RequiredArgsConstructor
@@ -35,6 +37,7 @@ public class ApplicationService {
     private final UserService userService;
     private final OutboxService outboxService;
 
+    @Transactional(readOnly = true)
     public List<Application> getApplicationsForUserEmail(String email) {
         Optional<User> userOpt = userService.findByEmail(email);
         if (userOpt.isEmpty()) {
@@ -137,7 +140,13 @@ public class ApplicationService {
         }
 
         String correlationId = UUID.randomUUID().toString();
-        outboxService.enqueueApprovalRequested(applicationId, requestedBy, correlationId);
+        outboxService.enqueueApprovalRequested(new ApprovalRequestedMessage(
+                UUID.randomUUID().toString(),
+                applicationId,
+                requestedBy,
+                correlationId,
+                OffsetDateTime.now()
+        ));
         return correlationId;
     }
 }

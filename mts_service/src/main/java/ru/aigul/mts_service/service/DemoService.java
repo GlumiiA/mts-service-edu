@@ -43,7 +43,6 @@ public class DemoService {
     private DemoStateDto buildState(Application app) {
         DemoStateDto state = new DemoStateDto();
 
-        // Application state from mts_db
         ApplicationStateDto appState = new ApplicationStateDto();
         appState.setId(app.getId());
         appState.setStatus(app.getStatus().name());
@@ -53,7 +52,6 @@ public class DemoService {
         appState.setUserId(app.getUser().getId());
         state.setApplication(appState);
 
-        // Billing state from billing_db
         BillingStateDto billingState = new BillingStateDto();
         Optional<Balance> balanceOpt = balanceRepository.findByUserId(app.getUser().getId());
         billingState.setBalance(balanceOpt.map(Balance::getAmount).orElse(BigDecimal.ZERO));
@@ -71,7 +69,6 @@ public class DemoService {
         }).toList());
         state.setBilling(billingState);
 
-        // Consistency check
         boolean consistent;
         boolean hasDebitTx = txs.stream()
                 .anyMatch(tx -> tx.getType() == ru.aigul.mts_service.billing.model.TransactionType.DEBIT);

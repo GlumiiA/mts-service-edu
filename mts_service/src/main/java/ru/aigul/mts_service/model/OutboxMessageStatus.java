@@ -1,8 +1,8 @@
 package ru.aigul.mts_service.model;
 
 public enum OutboxMessageStatus {
-    PENDING,
+    NEW,
+    PROCESSING,
     SENT,
-    DEAD
+    FAILED
 }
-

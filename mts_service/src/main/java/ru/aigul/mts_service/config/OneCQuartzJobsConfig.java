@@ -4,8 +4,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.quartz.*;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import ru.aigul.mts_service.service.integration.OneCIntegrationRetryJob;
-import ru.aigul.mts_service.service.integration.OneCStatusReconciliationJob;
+import ru.aigul.mts_service.integration1С.OneCIntegrationRetryJob;
+import ru.aigul.mts_service.integration1С.OneCStatusReconciliationJob;
 
 
 @Configuration

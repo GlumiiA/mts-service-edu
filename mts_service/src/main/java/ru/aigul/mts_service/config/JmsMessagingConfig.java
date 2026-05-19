@@ -2,6 +2,7 @@ package ru.aigul.mts_service.config;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import jakarta.jms.BytesMessage;
 import jakarta.jms.ConnectionFactory;
 import jakarta.jms.JMSException;
@@ -9,13 +10,17 @@ import jakarta.jms.Message;
 import jakarta.jms.Session;
 import jakarta.jms.TextMessage;
 import org.apache.qpid.jms.JmsConnectionFactory;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.jms.connection.CachingConnectionFactory;
+import org.springframework.jms.connection.TransactionAwareConnectionFactoryProxy;
 import org.springframework.jms.annotation.EnableJms;
 import org.springframework.jms.config.DefaultJmsListenerContainerFactory;
 import org.springframework.jms.core.JmsTemplate;
 import org.springframework.jms.support.converter.MessageConverter;
+import org.springframework.transaction.PlatformTransactionManager;
 
 import java.nio.charset.StandardCharsets;
 
@@ -29,6 +34,15 @@ public class JmsMessagingConfig {
             @Value("${app.messaging.username}") String username,
             @Value("${app.messaging.password}") String password) {
         return new JmsConnectionFactory(username, password, brokerUrl);
+    }
+
+    @Bean(name = "cachedJmsConnectionFactory")
+    public CachingConnectionFactory cachedJmsConnectionFactory(ConnectionFactory jmsConnectionFactory) {
+        CachingConnectionFactory factory = new CachingConnectionFactory(jmsConnectionFactory);
+        factory.setSessionCacheSize(10);
+        factory.setCacheConsumers(true);
+        factory.setCacheProducers(true);
+        return factory;
     }
 
     @Bean
@@ -79,14 +93,21 @@ public class JmsMessagingConfig {
     @Bean
     public ObjectMapper objectMapper() {
         ObjectMapper mapper = new ObjectMapper();
-        mapper.findAndRegisterModules();
+        mapper.registerModule(new JavaTimeModule());
         mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
         return mapper;
     }
 
+    @Bean(name = "transactionAwareJmsConnectionFactory")
+    public ConnectionFactory jmsConnectionFactoryProxy(@Qualifier("cachedJmsConnectionFactory") ConnectionFactory cachedJmsConnectionFactory) {
+        return new TransactionAwareConnectionFactoryProxy(cachedJmsConnectionFactory);
+    }
+
     @Bean
-    public JmsTemplate jmsTemplate(ConnectionFactory connectionFactory, MessageConverter jmsMessageConverter) {
-        JmsTemplate template = new JmsTemplate(connectionFactory);
+    public JmsTemplate jmsTemplate(
+            @Qualifier("transactionAwareJmsConnectionFactory") ConnectionFactory jmsConnectionFactoryProxy,
+            MessageConverter jmsMessageConverter) {
+        JmsTemplate template = new JmsTemplate(jmsConnectionFactoryProxy);
         template.setMessageConverter(jmsMessageConverter);
         template.setPubSubDomain(false);
         return template;
@@ -94,13 +115,14 @@ public class JmsMessagingConfig {
 
     @Bean
     public DefaultJmsListenerContainerFactory jmsListenerContainerFactory(
-            ConnectionFactory connectionFactory,
-            MessageConverter jmsMessageConverter) {
+            @Qualifier("transactionAwareJmsConnectionFactory") ConnectionFactory jmsConnectionFactoryProxy,
+            MessageConverter jmsMessageConverter,
+            PlatformTransactionManager transactionManager) {
         DefaultJmsListenerContainerFactory factory = new DefaultJmsListenerContainerFactory();
-        factory.setConnectionFactory(connectionFactory);
+        factory.setConnectionFactory(jmsConnectionFactoryProxy);
         factory.setMessageConverter(jmsMessageConverter);
-        factory.setSessionTransacted(true);
-        factory.setConcurrency("1-4");
+        factory.setTransactionManager(transactionManager);
+        factory.setConcurrency("1-2");
         return factory;
     }
 }

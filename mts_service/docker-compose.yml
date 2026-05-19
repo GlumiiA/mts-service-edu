@@ -12,19 +12,6 @@ services:
     volumes:
       - mts_db_data:/var/lib/postgresql/data
 
-  billing_db:
-    image: postgres:15
-    container_name: billing_db
-    environment:
-      POSTGRES_DB: billing_db
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-    ports:
-      - "5433:5432"
-    command: postgres -c max_prepared_transactions=100
-    volumes:
-      - billing_db_data:/var/lib/postgresql/data
-
   rabbitmq:
     image: rabbitmq:4.1-management
     container_name: rabbitmq
@@ -52,9 +39,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://mts_db:5432/mts_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      BILLING_DATASOURCE_URL: jdbc:postgresql://billing_db:5432/billing_db
-      BILLING_DATASOURCE_USERNAME: postgres
-      BILLING_DATASOURCE_PASSWORD: postgres
       APP_MESSAGING_BROKER_URL: amqp://rabbitmq:5672
       APP_MESSAGING_USERNAME: rabbitmq
       APP_MESSAGING_PASSWORD: rabbitmq
@@ -62,7 +46,6 @@ services:
       - "8081:8081"
     depends_on:
       - mts_db
-      - billing_db
       - rabbitmq
 
   mts_service_node2:
@@ -76,9 +59,6 @@ services:
       SPRING_DATASOURCE_URL: jdbc:postgresql://mts_db:5432/mts_db
       SPRING_DATASOURCE_USERNAME: postgres
       SPRING_DATASOURCE_PASSWORD: postgres
-      BILLING_DATASOURCE_URL: jdbc:postgresql://billing_db:5432/billing_db
-      BILLING_DATASOURCE_USERNAME: postgres
-      BILLING_DATASOURCE_PASSWORD: postgres
       APP_MESSAGING_BROKER_URL: amqp://rabbitmq:5672
       APP_MESSAGING_USERNAME: rabbitmq
       APP_MESSAGING_PASSWORD: rabbitmq
@@ -86,10 +66,8 @@ services:
       - "8082:8082"
     depends_on:
       - mts_db
-      - billing_db
       - rabbitmq
 
 volumes:
   mts_db_data:
-  billing_db_data:
   rabbitmq_data:

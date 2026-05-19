@@ -1,8 +1,6 @@
-package ru.aigul.mts_service.service.integration;
+package ru.aigul.mts_service.integration1С;
 
-/**
- * Exception for 1C system errors
- */
+
 public class OneCException extends Exception {
     
     private String errorCode;

@@ -6,9 +6,6 @@ import org.quartz.SchedulerException;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
-import org.springframework.transaction.PlatformTransactionManager;
-
-import javax.sql.DataSource;
 import java.util.Properties;
 
 
@@ -17,29 +14,13 @@ import java.util.Properties;
 public class QuartzSchedulerConfig {
 
     @Bean
-    public SchedulerFactoryBean schedulerFactoryBean(DataSource dataSource, 
-                                                      PlatformTransactionManager transactionManager) {
+    public SchedulerFactoryBean schedulerFactoryBean() {
         SchedulerFactoryBean factory = new SchedulerFactoryBean();
-
-        factory.setDataSource(dataSource);
-        factory.setTransactionManager(transactionManager);
 
         Properties props = new Properties();
 
         props.setProperty("org.quartz.scheduler.instanceName", "MtsServiceScheduler");
-        props.setProperty("org.quartz.scheduler.instanceId", "AUTO"); // Auto-generated instance ID (e.g., hostname + timestamp)
-
-        props.setProperty("org.quartz.jobStore.driverDelegateClass", "org.quartz.impl.jdbcjobstore.PostgreSQLDelegate");
-        props.setProperty("org.quartz.jobStore.tablePrefix", "QRTZ_");
-        props.setProperty("org.quartz.jobStore.useProperties", "true");
-        props.setProperty("org.quartz.jobStore.misfireThreshold", "60000");
-        props.setProperty("org.quartz.jobStore.isClustered", "true");
-        props.setProperty("org.quartz.jobStore.clusterCheckinInterval", "15000"); // 15 seconds
-
-        props.setProperty("org.quartz.jobStore.lockHandler.class", "org.quartz.impl.jdbcjobstore.StdRowLockSemaphore");
-
-        props.setProperty("org.quartz.scheduler.isClustered", "true");
-        props.setProperty("org.quartz.scheduler.clusterCheckinInterval", "15000");
+        props.setProperty("org.quartz.scheduler.instanceId", "AUTO");
 
         props.setProperty("org.quartz.threadPool.class", "org.quartz.simpl.SimpleThreadPool");
         props.setProperty("org.quartz.threadPool.threadCount", "5");

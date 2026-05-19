@@ -138,11 +138,24 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "const applicationId = pm.collectionVariables.get('applicationId');",
+                  "pm.test('Application id is set', () => {",
+                  "  pm.expect(applicationId, 'Сначала выполни Setup -> Создать заявку').to.not.be.empty;",
+                  "});",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const page = pm.response.json();",
-                  "pm.expect(page.content).to.be.an('array');",
+                  "pm.test('Response contains content array', () => {",
+                  "  pm.expect(page).to.have.property('content');",
+                  "  pm.expect(page.content).to.be.an('array');",
+                  "});",
+                  "pm.test('At least one sync record is returned', () => {",
+                  "  pm.expect(page.content.length, 'Сначала должен появиться sync в истории').to.be.greaterThan(0);",
+                  "});",
                   "if (page.content.length > 0) {",
                   "  const sync = page.content[0];",
+                  "  pm.expect(sync).to.have.property('id');",
+                  "  pm.expect(sync).to.have.property('syncStatus');",
+                  "  pm.expect(sync).to.have.property('createdAt');",
                   "  pm.collectionVariables.set('syncHistoryId', sync.id);",
                   "  pm.collectionVariables.set('externalId', sync.externalId);",
                   "  pm.collectionVariables.set('syncStatus', sync.syncStatus);",
@@ -170,9 +183,18 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "const externalId = pm.collectionVariables.get('externalId');",
+                  "pm.test('External id is set', () => {",
+                  "  pm.expect(externalId, 'Сначала получи externalId из истории синхронизации').to.not.be.empty;",
+                  "});",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const sync = pm.response.json();",
-                  "pm.expect(sync.externalId).to.eql(pm.collectionVariables.get('externalId'));"
+                  "pm.test('Response matches externalId', () => {",
+                  "  pm.expect(sync.externalId).to.eql(externalId);",
+                  "});",
+                  "pm.test('Sync has status', () => {",
+                  "  pm.expect(sync).to.have.property('syncStatus');",
+                  "});"
                 ]
               }
             }
@@ -203,7 +225,10 @@
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const stats = pm.response.json();",
-                  "pm.expect(stats).to.be.an('array');"
+                  "pm.test('Response is an array', () => {",
+                  "  pm.expect(stats).to.be.an('array');",
+                  "});",
+                  "pm.collectionVariables.set('errorStatsCount', String(stats.length));"
                 ]
               }
             }
@@ -238,8 +263,13 @@
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const page = pm.response.json();",
-                  "pm.expect(page.content).to.be.an('array');",
+                  "pm.test('Response contains content array', () => {",
+                  "  pm.expect(page).to.have.property('content');",
+                  "  pm.expect(page.content).to.be.an('array');",
+                  "});",
+                  "pm.collectionVariables.set('rejectionsCount', String(page.content.length));",
                   "if (page.content.length > 0) {",
+                  "  pm.expect(page.content[0]).to.have.property('id');",
                   "  pm.collectionVariables.set('rejectionId', page.content[0].id);",
                   "}"
                 ]
@@ -267,7 +297,11 @@
                 "exec": [
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const resp = pm.response.json();",
-                  "pm.expect(resp.pendingReviewCount).to.be.a('number');"
+                  "pm.test('pendingReviewCount exists', () => {",
+                  "  pm.expect(resp).to.have.property('pendingReviewCount');",
+                  "  pm.expect(resp.pendingReviewCount).to.be.a('number');",
+                  "});",
+                  "pm.collectionVariables.set('pendingReviewCount', String(resp.pendingReviewCount));"
                 ]
               }
             }
@@ -326,9 +360,16 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "const syncHistoryId = pm.collectionVariables.get('syncHistoryId');",
+                  "pm.test('Sync history id is set', () => {",
+                  "  pm.expect(syncHistoryId, 'Сначала выполни запрос \"Получить историю синхронизации для заявки\"').to.not.be.empty;",
+                  "});",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const resp = pm.response.json();",
-                  "pm.expect(resp.message).to.include('scheduled' || 'completed');"
+                  "pm.test('Retry scheduled message', () => {",
+                  "  pm.expect(resp).to.have.property('message');",
+                  "  pm.expect(resp.message).to.eql('Retry scheduled');",
+                  "});"
                 ]
               }
             }
@@ -357,9 +398,16 @@
               "listen": "test",
               "script": {
                 "exec": [
+                  "const rejectionId = pm.collectionVariables.get('rejectionId');",
+                  "pm.test('Rejection id is set', () => {",
+                  "  pm.expect(rejectionId, 'Сначала выполни запрос \"Получить все отклоненные заявки\"').to.not.be.empty;",
+                  "});",
                   "pm.test('Status 200', () => pm.response.to.have.status(200));",
                   "const resp = pm.response.json();",
-                  "pm.expect(resp.message).to.include('reviewed');"
+                  "pm.test('Rejection reviewed message', () => {",
+                  "  pm.expect(resp).to.have.property('message');",
+                  "  pm.expect(resp.message).to.eql('Rejection reviewed');",
+                  "});"
                 ]
               }
             }

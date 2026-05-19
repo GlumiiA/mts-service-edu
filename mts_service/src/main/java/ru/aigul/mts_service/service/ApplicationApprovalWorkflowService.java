@@ -14,12 +14,15 @@ import ru.aigul.mts_service.dto.application.ApplicationDto;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
 import ru.aigul.mts_service.exception.InsufficientFundsException;
 import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
+import ru.aigul.mts_service.messaging.dto.ConnectionRequestedMessage;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
 import ru.aigul.mts_service.model.Application;
 import ru.aigul.mts_service.model.ApplicationStatus;
 import ru.aigul.mts_service.repository.ApplicationRepository;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.UUID;
 
 @Slf4j
 @Service
@@ -98,7 +101,12 @@ public class ApplicationApprovalWorkflowService {
 
         application.setStatus(ApplicationStatus.APPROVED);
         applicationRepository.save(application);
-        outboxService.enqueueConnectionRequested(applicationId, correlationId);
+        outboxService.enqueueConnectionRequested(new ConnectionRequestedMessage(
+                UUID.randomUUID().toString(),
+                applicationId,
+                correlationId,
+                OffsetDateTime.now()
+        ));
 
         log.info("Application {} approved successfully{}", applicationId,
                 correlationId != null ? " correlationId=" + correlationId : "");

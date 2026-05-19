@@ -1,4 +1,4 @@
-package ru.aigul.mts_service.service.integration;
+package ru.aigul.mts_service.integration1С;
 
 import lombok.extern.slf4j.Slf4j;
 import org.quartz.Job;
@@ -13,18 +13,7 @@ import ru.aigul.mts_service.repository.OneCyncHistoryRepository;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * Quartz Job for retrying failed 1C integration requests.
- * 
- * Runs periodically to:
- * 1. Find all pending/retry records ready for next attempt
- * 2. Increment retry count with exponential backoff
- * 3. Re-submit to 1C integration service
- * 4. Move to DLQ if max retries exceeded
- * 
- * This job is executed by Quartz scheduler and runs only once across cluster nodes
- * thanks to JDBC JobStore locking mechanism.
- */
+
 @Component
 @Slf4j
 public class OneCIntegrationRetryJob implements Job {
@@ -40,7 +29,7 @@ public class OneCIntegrationRetryJob implements Job {
         try {
             log.info("Starting 1C integration retry job - node: {}", context.getScheduler().getSchedulerInstanceId());
             
-            // Find all sync records ready for retry
+
             LocalDateTime now = LocalDateTime.now();
             List<OneCyncHistory> pendingRetries = syncHistoryRepository.findPendingAndReadyForRetry(now);
             
@@ -62,32 +51,27 @@ public class OneCIntegrationRetryJob implements Job {
         }
     }
 
-    /**
-     * Retry individual sync record
-     */
     private void retryIntegration(OneCyncHistory syncRecord) {
         if (syncRecord.getRetryCount() >= syncRecord.getMaxRetries()) {
             log.warn("Max retries exceeded for sync record id={}, moving to DLQ", syncRecord.getId());
             syncRecord.setSyncStatus(OneCIntegrationStatus.DLQ);
             syncRecord.setLastError("Max retries exceeded");
             syncHistoryRepository.save(syncRecord);
-            
-            // TODO: Send to Dead Letter Queue notification
+
             integrationService.sendToDeadLetterQueue(syncRecord);
             return;
         }
 
         try {
-            // Re-submit to integration service
+
             integrationService.retrySync(syncRecord);
             
         } catch (Exception e) {
-            // Update retry count with exponential backoff
             syncRecord.setRetryCount(syncRecord.getRetryCount() + 1);
             syncRecord.setLastError(e.getMessage());
             syncRecord.setSyncStatus(OneCIntegrationStatus.RETRY);
             
-            // Calculate next retry with exponential backoff: 2^retryCount seconds
+
             long backoffSeconds = (long) Math.pow(2, syncRecord.getRetryCount());
             syncRecord.setNextRetryAt(LocalDateTime.now().plusSeconds(backoffSeconds));
             

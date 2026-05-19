@@ -1,4 +1,4 @@
-package ru.aigul.mts_service.service.integration;
+package ru.aigul.mts_service.integration1С;
 
 /**
  * Exception indicating insufficient funds in 1C system

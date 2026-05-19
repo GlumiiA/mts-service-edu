@@ -17,7 +17,10 @@ import java.util.Map;
 
 @Configuration
 @EnableJpaRepositories(
-    basePackages = "ru.aigul.mts_service.repository",
+    basePackages = {
+        "ru.aigul.mts_service.repository",
+        "ru.aigul.mts_service.billing.repository"
+    },
     entityManagerFactoryRef = "primaryEntityManagerFactory",
     transactionManagerRef = "transactionManager"
 )
@@ -48,7 +51,10 @@ public class PrimaryDataSourceConfig {
     public LocalContainerEntityManagerFactoryBean primaryEntityManagerFactory(DataSource primaryDataSource) {
         LocalContainerEntityManagerFactoryBean em = new LocalContainerEntityManagerFactoryBean();
         em.setDataSource(primaryDataSource);
-        em.setPackagesToScan("ru.aigul.mts_service.model");
+        em.setPackagesToScan(
+                "ru.aigul.mts_service.model",
+                "ru.aigul.mts_service.billing.model"
+        );
         em.setPersistenceUnitName("primaryPU");
 
         HibernateJpaVendorAdapter vendorAdapter = new HibernateJpaVendorAdapter();

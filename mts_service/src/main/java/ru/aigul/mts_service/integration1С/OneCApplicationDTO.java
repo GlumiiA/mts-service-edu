@@ -1,4 +1,4 @@
-package ru.aigul.mts_service.service.integration;
+package ru.aigul.mts_service.integration1С;
 
 import lombok.AllArgsConstructor;
 import lombok.Builder;
@@ -8,9 +8,7 @@ import lombok.NoArgsConstructor;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-/**
- * DTO for application data sent to 1C system
- */
+
 @Data
 @Builder
 @NoArgsConstructor
