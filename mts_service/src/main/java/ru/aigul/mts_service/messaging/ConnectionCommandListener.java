@@ -6,7 +6,7 @@ import org.springframework.jms.annotation.JmsListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 import ru.aigul.mts_service.messaging.dto.ConnectionRequestedMessage;
-import ru.aigul.mts_service.service.AsyncConnectionProcessingService;
+import ru.aigul.mts_service.messaging.consumer.AsyncConnectionProcessingService;
 
 @Slf4j
 @Component

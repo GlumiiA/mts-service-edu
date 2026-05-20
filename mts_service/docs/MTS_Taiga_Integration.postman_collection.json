@@ -1,0 +1,123 @@
+{
+  "info": {
+    "name": "MTS Service - Taiga Integration Tests",
+    "description": "Create application -> verify taigaTaskId -> test inbound Taiga webhook endpoint",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "userEmail", "value": "user@test.com" },
+    { "key": "userPassword", "value": "password" },
+    { "key": "applicationId", "value": "" },
+    { "key": "taigaTaskId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. Create application (expect taigaTaskId field)",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": {
+          "raw": "{{baseUrl}}/applications",
+          "host": ["{{baseUrl}}"],
+          "path": ["applications"]
+        },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{userEmail}}", "type": "string" },
+            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tariffId\": 4,\n  \"address\": \"Taiga sync street 10\",\n  \"cityId\": null,\n  \"additionalServiceIds\": []\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+              "const body = pm.response.json();",
+              "pm.test('Response has application id', () => pm.expect(body.id).to.be.a('number'));",
+              "pm.test('Response has taigaTaskId field', () => pm.expect(body).to.have.property('taigaTaskId'));",
+              "pm.collectionVariables.set('applicationId', String(body.id));",
+              "if (body.taigaTaskId !== null) {",
+              "  pm.collectionVariables.set('taigaTaskId', String(body.taigaTaskId));",
+              "} else {",
+              "  pm.collectionVariables.set('taigaTaskId', '');",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. Get application detail",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/applications/{{applicationId}}",
+          "host": ["{{baseUrl}}"],
+          "path": ["applications", "{{applicationId}}"]
+        },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{userEmail}}", "type": "string" },
+            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "pm.test('Application detail has taigaTaskId field', () => pm.expect(body).to.have.property('taigaTaskId'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. Simulate Taiga webhook",
+      "request": {
+        "method": "POST",
+        "header": [
+          { "key": "Content-Type", "value": "application/json" },
+          { "key": "X-TAIGA-WEBHOOK-SIGNATURE", "value": "invalid-for-manual-test" }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/taiga/webhook",
+          "host": ["{{baseUrl}}"],
+          "path": ["api", "taiga", "webhook"]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"type\": \"userstory\",\n  \"action\": \"create\",\n  \"by\": {\"username\": \"manual\"},\n  \"data\": {\"ref\": \"US-TEST\", \"subject\": \"Postman webhook test\", \"status\": {\"name\": \"NEW\"}}\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Manual webhook with invalid signature is rejected', () => pm.response.to.have.status(403));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

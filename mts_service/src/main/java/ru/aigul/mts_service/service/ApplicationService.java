@@ -1,41 +1,50 @@
 package ru.aigul.mts_service.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Limit;
 import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
-import ru.aigul.mts_service.billing.model.Balance;
-import ru.aigul.mts_service.billing.repository.BalanceRepository;
 import ru.aigul.mts_service.dto.CursorPage;
 import ru.aigul.mts_service.dto.application.*;
-import ru.aigul.mts_service.messaging.dto.ApprovalRequestedMessage;
-import ru.aigul.mts_service.exception.*;
+import ru.aigul.mts_service.exception.ApplicationNotFoundException;
+import ru.aigul.mts_service.exception.InsufficientFundsException;
+import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
+import ru.aigul.mts_service.exception.TariffNotFoundException;
+import ru.aigul.mts_service.exception.UserNotFoundException;
+import ru.aigul.mts_service.integration.taiga.TaigaTaskService;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
-import ru.aigul.mts_service.model.*;
-import ru.aigul.mts_service.repository.*;
+import ru.aigul.mts_service.model.Application;
+import ru.aigul.mts_service.model.ApplicationStatus;
+import ru.aigul.mts_service.model.Tariff;
+import ru.aigul.mts_service.model.TariffCityPrice;
+import ru.aigul.mts_service.model.User;
+import ru.aigul.mts_service.repository.ApplicationRepository;
+import ru.aigul.mts_service.repository.ServiceRepository;
+import ru.aigul.mts_service.repository.TariffCityPriceRepository;
+import ru.aigul.mts_service.repository.TariffRepository;
 
 import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
-import java.time.OffsetDateTime;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
     private final TariffRepository tariffRepository;
     private final TariffCityPriceRepository tariffCityPriceRepository;
-    private final BalanceRepository balanceRepository;
     private final ServiceRepository serviceRepository;
     private final ApplicationMapper applicationMapper;
     private final UserService userService;
-    private final OutboxService outboxService;
+    private final LocalBillingService localBillingService;
+    private final TaigaTaskService taigaTaskService;
 
     @Transactional(readOnly = true)
     public List<Application> getApplicationsForUserEmail(String email) {
@@ -52,7 +61,6 @@ public class ApplicationService {
     public ApplicationDto create(String email, ApplicationCreateDto dto) {
         User user = userService.findByEmail(email)
                 .orElseThrow(() -> new UserNotFoundException(email));
-        Long userId = user.getId();
 
         Tariff tariff = tariffRepository.findById(dto.getTariffId())
                 .orElseThrow(() -> new TariffNotFoundException(dto.getTariffId()));
@@ -78,9 +86,8 @@ public class ApplicationService {
             }
         }
 
-        Balance balance = balanceRepository.findByUserId(userId)
-                .orElseThrow(() -> new InsufficientFundsException());
-        if (balance.getAmount().compareTo(totalPrice) < 0) {
+        BigDecimal availableBalance = localBillingService.getBalance(user);
+        if (availableBalance.compareTo(totalPrice) < 0) {
             throw new InsufficientFundsException();
         }
 
@@ -93,6 +100,17 @@ public class ApplicationService {
         application.setAdditionalServices(new HashSet<>(additionalServices));
 
         application = applicationRepository.save(application);
+
+        try {
+            Optional<Long> taigaTaskId = taigaTaskService.createUserStoryForApplication(application);
+            if (taigaTaskId.isPresent()) {
+                application.setTaigaTaskId(taigaTaskId.get());
+                application = applicationRepository.save(application);
+            }
+        } catch (Exception ex) {
+            log.warn("Taiga task creation failed for applicationId={}: {}", application.getId(), ex.getMessage());
+        }
+
         return applicationMapper.toDto(application);
     }
 
@@ -128,25 +146,5 @@ public class ApplicationService {
         application.setRejectReason(dto.getReason());
         application = applicationRepository.save(application);
         return applicationMapper.toDto(application);
-    }
-
-    @Transactional
-    public String requestApproveAsync(Long applicationId, String requestedBy) {
-        Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
-
-        if (application.getStatus() != ApplicationStatus.PENDING) {
-            throw new InvalidApplicationStatusException("Application already processed");
-        }
-
-        String correlationId = UUID.randomUUID().toString();
-        outboxService.enqueueApprovalRequested(new ApprovalRequestedMessage(
-                UUID.randomUUID().toString(),
-                applicationId,
-                requestedBy,
-                correlationId,
-                OffsetDateTime.now()
-        ));
-        return correlationId;
     }
 }

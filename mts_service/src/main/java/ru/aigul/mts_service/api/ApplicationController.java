@@ -11,6 +11,7 @@ import org.springframework.web.bind.annotation.*;
 import ru.aigul.mts_service.dto.CursorPage;
 import ru.aigul.mts_service.dto.application.*;
 import ru.aigul.mts_service.model.ApplicationStatus;
+import ru.aigul.mts_service.service.ApplicationApprovalWorkflowService;
 import ru.aigul.mts_service.service.ApplicationService;
 
 @RestController
@@ -19,6 +20,7 @@ import ru.aigul.mts_service.service.ApplicationService;
 public class ApplicationController {
 
     private final ApplicationService applicationService;
+    private final ApplicationApprovalWorkflowService applicationApprovalWorkflowService;
 
     @Value("${app.pagination.default-limit}")
     private int defaultLimit;
@@ -50,7 +52,8 @@ public class ApplicationController {
     @PostMapping("/{applicationId}/approve")
     @PreAuthorize("hasAuthority('APPLICATION_APPROVE')")
     public ResponseEntity<AsyncApprovalAcceptedDto> approve(Authentication auth, @PathVariable Long applicationId) {
-        String correlationId = applicationService.requestApproveAsync(applicationId, auth.getName());
+        String correlationId = java.util.UUID.randomUUID().toString();
+        applicationApprovalWorkflowService.approveAsynchronously(applicationId, auth.getName(), correlationId);
         AsyncApprovalAcceptedDto body = new AsyncApprovalAcceptedDto(applicationId, correlationId, "ACCEPTED");
         return ResponseEntity.status(HttpStatus.ACCEPTED).body(body);
     }

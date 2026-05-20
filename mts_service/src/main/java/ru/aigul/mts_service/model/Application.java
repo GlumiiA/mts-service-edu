@@ -54,6 +54,9 @@ public class Application {
     @Column(nullable = false, precision = 19, scale = 2)
     private BigDecimal lockedPrice;
 
+    @Column(name = "taiga_task_id")
+    private Long taigaTaskId;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(name = "application_services", joinColumns = @JoinColumn(name = "application_id"), inverseJoinColumns = @JoinColumn(name = "service_id"))
     private Set<Service> additionalServices = new HashSet<>();

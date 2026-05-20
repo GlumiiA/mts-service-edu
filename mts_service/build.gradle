@@ -45,9 +45,8 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-quartz'
     implementation 'org.quartz-scheduler:quartz:2.3.2'
     
-    // REST Client for 1C integration
+    // REST client integrations (Taiga API)
     implementation 'org.springframework.boot:spring-boot-starter-webflux'
-    implementation 'io.projectreactor.addons:reactor-extra'
     
     // JSON processing
     implementation 'com.fasterxml.jackson.core:jackson-databind'

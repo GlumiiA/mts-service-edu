@@ -1,0 +1,231 @@
+{
+  "info": {
+    "name": "MTS Service - JMS End-to-End Tests",
+    "description": "Checks the async flow: HTTP approve -> outbox -> JMS approval listener -> billing debit -> JMS connection listener -> CONNECTED.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "userEmail", "value": "user@test.com" },
+    { "key": "userPassword", "value": "password" },
+    { "key": "managerEmail", "value": "manager@test.com" },
+    { "key": "managerPassword", "value": "password" },
+    { "key": "jmsApplicationId", "value": "" },
+    { "key": "jmsCorrelationId", "value": "" },
+    { "key": "jmsBalanceBefore", "value": "" },
+    { "key": "jmsTotalPrice", "value": "" },
+    { "key": "jmsPollAttempts", "value": "" },
+    { "key": "jmsTaigaTaskId", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. USER reads balance before JMS flow",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{userEmail}}", "type": "string" },
+            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Save balance before debit', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body).to.have.property('amount');",
+              "  pm.collectionVariables.set('jmsBalanceBefore', String(body.amount));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2. USER creates application for JMS flow",
+      "request": {
+        "method": "POST",
+        "header": [{ "key": "Content-Type", "value": "application/json" }],
+        "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{userEmail}}", "type": "string" },
+            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"tariffId\": 4,\n  \"address\": \"JMS test address\",\n  \"cityId\": null,\n  \"additionalServiceIds\": []\n}",
+          "options": { "raw": { "language": "json" } }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+              "pm.test('Application starts as PENDING', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.status).to.eql('PENDING');",
+              "  pm.expect(body).to.have.property('taigaTaskId');",
+              "  pm.collectionVariables.set('jmsApplicationId', body.id);",
+              "  pm.collectionVariables.set('jmsTaigaTaskId', body.taigaTaskId === null ? '' : String(body.taigaTaskId));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "3. MANAGER requests approval asynchronously",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/applications/{{jmsApplicationId}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{jmsApplicationId}}", "approve"] },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{managerEmail}}", "type": "string" },
+            { "key": "password", "value": "{{managerPassword}}", "type": "string" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+              "pm.test('Async command accepted', () => {",
+              "  const body = pm.response.json();",
+              "  pm.expect(body.applicationId).to.eql(Number(pm.collectionVariables.get('jmsApplicationId')));",
+              "  pm.expect(body.status).to.eql('ACCEPTED');",
+              "  pm.expect(body.correlationId).to.be.a('string').and.not.empty;",
+              "  pm.collectionVariables.set('jmsCorrelationId', body.correlationId);",
+              "  pm.collectionVariables.set('jmsPollAttempts', '0');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "4. POLL demo state until CONNECTED",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/api/demo/state/{{jmsApplicationId}}", "host": ["{{baseUrl}}"], "path": ["api", "demo", "state", "{{jmsApplicationId}}"] },
+        "auth": { "type": "noauth" }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const waitUntil = Date.now() + 1000;",
+              "while (Date.now() < waitUntil) {}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "const status = body.application && body.application.status;",
+              "const attempts = Number(pm.collectionVariables.get('jmsPollAttempts') || 0);",
+              "if (status !== 'CONNECTED' && attempts < 12) {",
+              "  pm.collectionVariables.set('jmsPollAttempts', String(attempts + 1));",
+              "  postman.setNextRequest(pm.info.requestName);",
+              "} else {",
+              "  pm.collectionVariables.unset('jmsPollAttempts');",
+              "  pm.test('JMS flow reaches CONNECTED', () => pm.expect(status).to.eql('CONNECTED'));",
+              "  pm.test('Billing is consistent and has DEBIT transaction', () => {",
+              "    pm.expect(body.consistent).to.eql(true);",
+              "    const txs = (body.billing && body.billing.transactions) || [];",
+              "    pm.expect(txs.some(tx => tx.type === 'DEBIT' && Number(tx.applicationId) === Number(pm.collectionVariables.get('jmsApplicationId')))).to.eql(true);",
+              "  });",
+              "  pm.collectionVariables.set('jmsTotalPrice', String(body.application.totalPrice));",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "5. USER checks balance after JMS debit",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{userEmail}}", "type": "string" },
+            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "pm.test('Balance decreased by application total price', () => {",
+              "  const body = pm.response.json();",
+              "  const before = Number(pm.collectionVariables.get('jmsBalanceBefore'));",
+              "  const total = Number(pm.collectionVariables.get('jmsTotalPrice'));",
+              "  pm.expect(Number(body.amount)).to.eql(before - total);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "6. MANAGER repeats approve for processed application",
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": { "raw": "{{baseUrl}}/applications/{{jmsApplicationId}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{jmsApplicationId}}", "approve"] },
+        "auth": {
+          "type": "basic",
+          "basic": [
+            { "key": "username", "value": "{{managerEmail}}", "type": "string" },
+            { "key": "password", "value": "{{managerPassword}}", "type": "string" }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Repeat approve is rejected for already processed application', () => {",
+              "  pm.expect(pm.response.code).to.be.oneOf([400, 409]);",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

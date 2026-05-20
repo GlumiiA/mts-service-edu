@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew dependencies:*)",
+      "Bash(git rm:*)",
+      "Bash(curl -s \"https://search.maven.org/solrsearch/select?q=g:com.atomikos+AND+a:transactions-jakarta&rows=5&wt=json\")",
+      "Bash(python3 -c \"import sys,json; data=json.load\\(sys.stdin\\); print\\(data['response']\\)\")",
+      "WebFetch(domain:www.atomikos.com)"
+    ]
+  }
+}

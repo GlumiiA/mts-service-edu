@@ -20,6 +20,7 @@ public class ApplicationDetailDto {
     private String address;
     private ApplicationStatus status;
     private String rejectReason;
+    private Long taigaTaskId;
     private LocalDateTime createdAt;
     private LocalDateTime updatedAt;
     private List<ServiceDto> additionalServices;

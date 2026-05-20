@@ -6,7 +6,7 @@ import org.springframework.jms.annotation.JmsListener;
 import org.springframework.messaging.handler.annotation.Header;
 import org.springframework.stereotype.Component;
 import ru.aigul.mts_service.messaging.dto.ApprovalRequestedMessage;
-import ru.aigul.mts_service.service.AsyncApprovalProcessingService;
+import ru.aigul.mts_service.messaging.consumer.AsyncApprovalProcessingService;
 
 @Slf4j
 @Component

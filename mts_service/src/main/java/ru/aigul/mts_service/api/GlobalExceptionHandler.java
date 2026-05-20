@@ -13,6 +13,7 @@ import ru.aigul.mts_service.exception.AccessDeniedException;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
 import ru.aigul.mts_service.exception.InsufficientFundsException;
 import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
+import ru.aigul.mts_service.exception.TaigaIntegrationException;
 import ru.aigul.mts_service.exception.TariffAlreadyArchivedException;
 import ru.aigul.mts_service.exception.TariffNotFoundException;
 import ru.aigul.mts_service.exception.UserAlreadyExists;
@@ -40,6 +41,12 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(InsufficientFundsException.class)
     @ResponseStatus(HttpStatus.PAYMENT_REQUIRED)
     public ErrorResponse handleInsufficientFunds(InsufficientFundsException ex) {
+        return new ErrorResponse(ex.getMessage());
+    }
+
+    @ExceptionHandler(TaigaIntegrationException.class)
+    @ResponseStatus(HttpStatus.SERVICE_UNAVAILABLE)
+    public ErrorResponse handleTaigaIntegration(TaigaIntegrationException ex) {
         return new ErrorResponse(ex.getMessage());
     }
 

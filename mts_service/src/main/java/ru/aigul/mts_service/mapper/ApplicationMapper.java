@@ -24,6 +24,7 @@ public class ApplicationMapper {
                 a.getAddress(),
                 a.getStatus(),
                 a.getRejectReason(),
+                a.getTaigaTaskId(),
                 a.getCreatedAt(),
                 a.getUpdatedAt()
         );
@@ -41,6 +42,7 @@ public class ApplicationMapper {
                 a.getAddress(),
                 a.getStatus(),
                 a.getRejectReason(),
+                a.getTaigaTaskId(),
                 a.getCreatedAt(),
                 a.getUpdatedAt(),
                 services,
