@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
+import ru.aigul.mts_service.integration.taiga.TaigaTaskService;
 import ru.aigul.mts_service.model.Application;
 import ru.aigul.mts_service.model.ApplicationStatus;
 import ru.aigul.mts_service.repository.ApplicationRepository;
@@ -13,9 +14,11 @@ import ru.aigul.mts_service.repository.ApplicationRepository;
 @Slf4j
 @Service
 @RequiredArgsConstructor
-public class ApplicationConnectionWorkflowService {
+public class
+ApplicationConnectionWorkflowService {
 
     private final ApplicationRepository applicationRepository;
+    private final TaigaTaskService taigaTaskService;
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public void connectAsynchronously(Long applicationId, String correlationId) {
@@ -34,9 +37,9 @@ public class ApplicationConnectionWorkflowService {
 
         application.setStatus(ApplicationStatus.CONNECTED);
         applicationRepository.save(application);
+        taigaTaskService.moveApplicationToDone(application, "Connection completed automatically");
 
         log.info("Application {} connected successfully{}", applicationId,
                 correlationId != null ? " correlationId=" + correlationId : "");
     }
 }
-

@@ -12,10 +12,12 @@ import ru.aigul.mts_service.dto.application.*;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
 import ru.aigul.mts_service.exception.InsufficientFundsException;
 import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
+import ru.aigul.mts_service.exception.TaigaIntegrationException;
 import ru.aigul.mts_service.exception.TariffNotFoundException;
 import ru.aigul.mts_service.exception.UserNotFoundException;
 import ru.aigul.mts_service.integration.taiga.TaigaTaskService;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
+import ru.aigul.mts_service.mapper.ApplicationEntityMapper;
 import ru.aigul.mts_service.model.Application;
 import ru.aigul.mts_service.model.ApplicationStatus;
 import ru.aigul.mts_service.model.Tariff;
@@ -45,6 +47,7 @@ public class ApplicationService {
     private final UserService userService;
     private final LocalBillingService localBillingService;
     private final TaigaTaskService taigaTaskService;
+    private final ApplicationEntityMapper applicationEntityMapper;
 
     @Transactional(readOnly = true)
     public List<Application> getApplicationsForUserEmail(String email) {
@@ -91,25 +94,22 @@ public class ApplicationService {
             throw new InsufficientFundsException();
         }
 
-        Application application = new Application();
-        application.setUser(user);
-        application.setTariff(tariff);
-        application.setAddress(dto.getAddress());
-        application.setStatus(ApplicationStatus.PENDING);
-        application.setLockedPrice(totalPrice);
-        application.setAdditionalServices(new HashSet<>(additionalServices));
+        Application application = applicationEntityMapper.fromCreateDto(
+                user,
+                tariff,
+                dto,
+                totalPrice,
+                new HashSet<>(additionalServices)
+        );
 
         application = applicationRepository.save(application);
 
-        try {
-            Optional<Long> taigaTaskId = taigaTaskService.createUserStoryForApplication(application);
-            if (taigaTaskId.isPresent()) {
-                application.setTaigaTaskId(taigaTaskId.get());
-                application = applicationRepository.save(application);
-            }
-        } catch (Exception ex) {
-            log.warn("Taiga task creation failed for applicationId={}: {}", application.getId(), ex.getMessage());
+        Optional<Long> taigaTaskId = taigaTaskService.createUserStoryForApplication(application);
+        if (taigaTaskId.isEmpty()) {
+            throw new TaigaIntegrationException("Taiga task was not created for applicationId=" + application.getId());
         }
+        application.setTaigaTaskId(taigaTaskId.get());
+        application = applicationRepository.save(application);
 
         return applicationMapper.toDto(application);
     }

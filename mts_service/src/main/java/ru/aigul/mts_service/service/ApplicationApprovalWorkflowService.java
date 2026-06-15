@@ -9,6 +9,7 @@ import ru.aigul.mts_service.dto.application.ApplicationDto;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
 import ru.aigul.mts_service.exception.InsufficientFundsException;
 import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
+import ru.aigul.mts_service.exception.TaigaIntegrationException;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
 import ru.aigul.mts_service.messaging.dto.ConnectionRequestedMessage;
 import ru.aigul.mts_service.messaging.outbox.OutboxService;
@@ -32,12 +33,35 @@ public class ApplicationApprovalWorkflowService {
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
     public ApplicationDto approveAsynchronously(Long applicationId, String requestedBy, String correlationId) {
-        return approve(applicationId, requestedBy, correlationId);
+        return approve(applicationId, requestedBy, correlationId, true);
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public ApplicationDto markProcessingFromTaiga(Long applicationId) {
+        Application application = applicationRepository.findByIdForUpdate(applicationId)
+                .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
+
+        if (application.getStatus() == ApplicationStatus.PROCESSING) {
+            return applicationMapper.toDto(application);
+        }
+        if (application.getStatus() != ApplicationStatus.PENDING) {
+            throw new InvalidApplicationStatusException("Only pending applications can be taken into processing");
+        }
+
+        application.setStatus(ApplicationStatus.PROCESSING);
+        application = applicationRepository.save(application);
+        return applicationMapper.toDto(application);
+    }
+
+    @Transactional(isolation = Isolation.REPEATABLE_READ)
+    public ApplicationDto approveFromTaiga(Long applicationId, String requestedBy, String correlationId) {
+        return approve(applicationId, requestedBy, correlationId, false);
     }
 
     private ApplicationDto approve(Long applicationId,
                                    String requestedBy,
-                                   String correlationId) {
+                                   String correlationId,
+                                   boolean allowPendingApproval) {
         Application application = applicationRepository.findByIdForUpdate(applicationId)
                 .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
 
@@ -51,13 +75,20 @@ public class ApplicationApprovalWorkflowService {
             throw new InvalidApplicationStatusException("Application already rejected");
         }
 
-        if (application.getStatus() == ApplicationStatus.PROCESSING) {
-            log.info("Application {} is already processing, returning current state", applicationId);
-            return applicationMapper.toDto(application);
+        if (application.getTaigaTaskId() == null) {
+            throw new TaigaIntegrationException(
+                    "Application " + applicationId + " cannot be approved because Taiga task was not created");
         }
 
-        application.setStatus(ApplicationStatus.PROCESSING);
-        applicationRepository.save(application);
+        if (application.getStatus() == ApplicationStatus.PENDING) {
+            if (!allowPendingApproval) {
+                throw new InvalidApplicationStatusException("Application must be in processing before approval");
+            }
+            application.setStatus(ApplicationStatus.PROCESSING);
+            applicationRepository.save(application);
+        } else if (application.getStatus() != ApplicationStatus.PROCESSING) {
+            throw new InvalidApplicationStatusException("Application cannot be approved from status " + application.getStatus());
+        }
 
         BigDecimal totalPrice = application.getLockedPrice();
         try {

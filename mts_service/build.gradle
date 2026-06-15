@@ -40,7 +40,8 @@ dependencies {
     implementation 'org.flywaydb:flyway-database-postgresql'
     implementation 'org.jboss.narayana.jta:narayana-jta:6.0.2.Final'
     implementation 'jakarta.transaction:jakarta.transaction-api'
-    
+    implementation 'jakarta.resource:jakarta.resource-api:2.1.0'
+
     // Quartz Scheduler with JDBC JobStore
     implementation 'org.springframework.boot:spring-boot-starter-quartz'
     implementation 'org.quartz-scheduler:quartz:2.3.2'

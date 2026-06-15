@@ -14,6 +14,16 @@ import java.util.List;
 import java.util.Optional;
 
 public interface ApplicationRepository extends JpaRepository<Application, Long> {
+    @Query("SELECT a FROM Application a JOIN FETCH a.user JOIN FETCH a.tariff WHERE a.id = :id")
+    Optional<Application> findByIdWithUserAndTariff(@Param("id") Long id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT a FROM Application a JOIN FETCH a.user JOIN FETCH a.tariff WHERE a.taigaTaskId = :taigaTaskId")
+    Optional<Application> findByTaigaTaskIdForUpdate(@Param("taigaTaskId") Long taigaTaskId);
+
+    @Query("SELECT a FROM Application a JOIN FETCH a.user JOIN FETCH a.tariff ORDER BY a.id ASC")
+    List<Application> findAllWithUserAndTariffOrderByIdAsc();
+
     @Query("SELECT a FROM Application a JOIN FETCH a.user JOIN FETCH a.tariff WHERE a.user = :user ORDER BY a.createdAt DESC")
     List<Application> findAllByUserOrderByCreatedAtDesc(User user);
 

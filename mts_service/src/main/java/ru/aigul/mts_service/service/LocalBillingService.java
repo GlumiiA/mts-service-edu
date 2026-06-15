@@ -21,7 +21,7 @@ import java.nio.charset.StandardCharsets;
 public class LocalBillingService {
 
     private static final String TYPE_DEBIT = "DEBIT";
-    private static final String TYPE_TOP_UP_REQUEST = "TOP_UP_REQUEST";
+    private static final String TYPE_TOP_UP = "TOP_UP";
 
     private final BillingBalanceRepository billingBalanceRepository;
     private final BillingTransactionRepository billingTransactionRepository;
@@ -39,17 +39,16 @@ public class LocalBillingService {
     @Transactional
     public String createTopUpPayment(User user, BigDecimal amount) {
         BillingBalance balance = findForUpdateOrCreate(user.getId());
-        if (balance.getAmount() == null) {
-            balance.setAmount(BigDecimal.ZERO);
-        }
+        BigDecimal current = balance.getAmount() == null ? BigDecimal.ZERO : balance.getAmount();
+        balance.setAmount(current.add(amount));
         billingBalanceRepository.save(balance);
 
         BillingTransaction tx = new BillingTransaction();
         tx.setUserId(user.getId());
         tx.setApplicationId(0L);
         tx.setAmount(amount);
-        tx.setType(TYPE_TOP_UP_REQUEST);
-        tx.setDescription("Top-up request created");
+        tx.setType(TYPE_TOP_UP);
+        tx.setDescription("Top-up completed via local mock payment");
         billingTransactionRepository.save(tx);
 
         return paymentsBaseUrl
@@ -62,6 +61,10 @@ public class LocalBillingService {
                       Long applicationId,
                       BigDecimal amount,
                       String description) {
+        if (billingTransactionRepository.existsByApplicationIdAndType(applicationId, TYPE_DEBIT)) {
+            return;
+        }
+
         BillingBalance balance = findForUpdateOrCreate(user.getId());
         BigDecimal current = balance.getAmount() == null ? BigDecimal.ZERO : balance.getAmount();
         if (current.compareTo(amount) < 0) {

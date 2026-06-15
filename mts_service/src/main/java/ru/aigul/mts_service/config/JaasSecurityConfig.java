@@ -19,6 +19,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.web.SecurityFilterChain;
 import ru.aigul.mts_service.auth.RolePrincipal;
 import ru.aigul.mts_service.auth.RolePrivilegeMapper;
+import ru.aigul.mts_service.auth.UserPrincipal;
 import ru.aigul.mts_service.auth.XmlUserStore;
 
 import java.security.Principal;
@@ -136,6 +137,15 @@ public class JaasSecurityConfig {
                 log.debug("AuthorityGranter.grant principalType={} name={}", principal.getClass().getName(), principal.getName());
             } catch (Exception e) {
                 log.debug("AuthorityGranter.grant principal toString={}", String.valueOf(principal));
+            }
+
+            if (principal instanceof UserPrincipal) {
+                return Set.of();
+            }
+            if (!(principal instanceof RolePrincipal)) {
+                log.debug("AuthorityGranter.grant skips non-role principalType={} name={}",
+                        principal.getClass().getName(), principal.getName());
+                return Set.of();
             }
 
             String roleName = principal.getName();
