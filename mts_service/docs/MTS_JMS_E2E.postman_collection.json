@@ -5,17 +5,54 @@
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "variable": [
-    { "key": "baseUrl", "value": "http://localhost:8080" },
-    { "key": "userEmail", "value": "user@test.com" },
-    { "key": "userPassword", "value": "password" },
-    { "key": "managerEmail", "value": "manager@test.com" },
-    { "key": "managerPassword", "value": "password" },
-    { "key": "jmsApplicationId", "value": "" },
-    { "key": "jmsCorrelationId", "value": "" },
-    { "key": "jmsBalanceBefore", "value": "" },
-    { "key": "jmsTotalPrice", "value": "" },
-    { "key": "jmsPollAttempts", "value": "" },
-    { "key": "jmsTaigaTaskId", "value": "" }
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "userEmail",
+      "value": "user@test.com"
+    },
+    {
+      "key": "userPassword",
+      "value": "password"
+    },
+    {
+      "key": "managerEmail",
+      "value": "manager@test.com"
+    },
+    {
+      "key": "managerPassword",
+      "value": "password"
+    },
+    {
+      "key": "jmsApplicationId",
+      "value": ""
+    },
+    {
+      "key": "jmsCorrelationId",
+      "value": ""
+    },
+    {
+      "key": "jmsBalanceBefore",
+      "value": ""
+    },
+    {
+      "key": "jmsTotalPrice",
+      "value": ""
+    },
+    {
+      "key": "jmsPollAttempts",
+      "value": ""
+    },
+    {
+      "key": "jmsTaigaTaskId",
+      "value": ""
+    },
+    {
+      "key": "jmsTaigaSyncPollAttempts",
+      "value": ""
+    }
   ],
   "item": [
     {
@@ -23,12 +60,29 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+        "url": {
+          "raw": "{{baseUrl}}/account/balance",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "account",
+            "balance"
+          ]
+        },
         "auth": {
           "type": "basic",
           "basic": [
-            { "key": "username", "value": "{{userEmail}}", "type": "string" },
-            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+            {
+              "key": "username",
+              "value": "{{userEmail}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{userPassword}}",
+              "type": "string"
+            }
           ]
         }
       },
@@ -53,19 +107,44 @@
       "name": "2. USER creates application for JMS flow",
       "request": {
         "method": "POST",
-        "header": [{ "key": "Content-Type", "value": "application/json" }],
-        "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/applications",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "applications"
+          ]
+        },
         "auth": {
           "type": "basic",
           "basic": [
-            { "key": "username", "value": "{{userEmail}}", "type": "string" },
-            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+            {
+              "key": "username",
+              "value": "{{userEmail}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{userPassword}}",
+              "type": "string"
+            }
           ]
         },
         "body": {
           "mode": "raw",
           "raw": "{\n  \"tariffId\": 4,\n  \"address\": \"JMS test address\",\n  \"cityId\": null,\n  \"additionalServiceIds\": []\n}",
-          "options": { "raw": { "language": "json" } }
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
         }
       },
       "event": [
@@ -75,13 +154,68 @@
             "type": "text/javascript",
             "exec": [
               "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
-              "pm.test('Application starts as PENDING', () => {",
+              "pm.test('Application starts as PENDING_TAIGA_SYNC', () => {",
               "  const body = pm.response.json();",
-              "  pm.expect(body.status).to.eql('PENDING');",
-              "  pm.expect(body).to.have.property('taigaTaskId');",
+              "  pm.expect(body.status).to.eql('PENDING_TAIGA_SYNC');",
+              "  pm.expect(body.taigaTaskId).to.eql(null);",
               "  pm.collectionVariables.set('jmsApplicationId', body.id);",
-              "  pm.collectionVariables.set('jmsTaigaTaskId', body.taigaTaskId === null ? '' : String(body.taigaTaskId));",
+              "  pm.collectionVariables.set('jmsTaigaSyncPollAttempts', '0');",
               "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "2b. POLL Taiga story creation (async)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/demo/state/{{jmsApplicationId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "demo",
+            "state",
+            "{{jmsApplicationId}}"
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const waitUntil = Date.now() + 500;",
+              "while (Date.now() < waitUntil) {}"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "const body = pm.response.json();",
+              "const status = body.application && body.application.status;",
+              "const attempts = Number(pm.collectionVariables.get('jmsTaigaSyncPollAttempts') || 0);",
+              "if (status === 'PENDING_TAIGA_SYNC' && attempts < 10) {",
+              "  pm.collectionVariables.set('jmsTaigaSyncPollAttempts', String(attempts + 1));",
+              "  postman.setNextRequest(pm.info.requestName);",
+              "} else {",
+              "  pm.collectionVariables.unset('jmsTaigaSyncPollAttempts');",
+              "  pm.test('Taiga story created asynchronously (status PENDING)', () => pm.expect(status).to.eql('PENDING'));",
+              "  pm.test('taigaTaskId is set', () => pm.expect(body.application.taigaTaskId).to.not.eql(null));",
+              "  pm.collectionVariables.set('jmsTaigaTaskId', String(body.application.taigaTaskId));",
+              "}"
             ]
           }
         }
@@ -92,12 +226,30 @@
       "request": {
         "method": "POST",
         "header": [],
-        "url": { "raw": "{{baseUrl}}/applications/{{jmsApplicationId}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{jmsApplicationId}}", "approve"] },
+        "url": {
+          "raw": "{{baseUrl}}/applications/{{jmsApplicationId}}/approve",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "applications",
+            "{{jmsApplicationId}}",
+            "approve"
+          ]
+        },
         "auth": {
           "type": "basic",
           "basic": [
-            { "key": "username", "value": "{{managerEmail}}", "type": "string" },
-            { "key": "password", "value": "{{managerPassword}}", "type": "string" }
+            {
+              "key": "username",
+              "value": "{{managerEmail}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{managerPassword}}",
+              "type": "string"
+            }
           ]
         }
       },
@@ -126,8 +278,21 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": { "raw": "{{baseUrl}}/api/demo/state/{{jmsApplicationId}}", "host": ["{{baseUrl}}"], "path": ["api", "demo", "state", "{{jmsApplicationId}}"] },
-        "auth": { "type": "noauth" }
+        "url": {
+          "raw": "{{baseUrl}}/api/demo/state/{{jmsApplicationId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "demo",
+            "state",
+            "{{jmsApplicationId}}"
+          ]
+        },
+        "auth": {
+          "type": "noauth"
+        }
       },
       "event": [
         {
@@ -172,12 +337,29 @@
       "request": {
         "method": "GET",
         "header": [],
-        "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+        "url": {
+          "raw": "{{baseUrl}}/account/balance",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "account",
+            "balance"
+          ]
+        },
         "auth": {
           "type": "basic",
           "basic": [
-            { "key": "username", "value": "{{userEmail}}", "type": "string" },
-            { "key": "password", "value": "{{userPassword}}", "type": "string" }
+            {
+              "key": "username",
+              "value": "{{userEmail}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{userPassword}}",
+              "type": "string"
+            }
           ]
         }
       },
@@ -204,12 +386,30 @@
       "request": {
         "method": "POST",
         "header": [],
-        "url": { "raw": "{{baseUrl}}/applications/{{jmsApplicationId}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{jmsApplicationId}}", "approve"] },
+        "url": {
+          "raw": "{{baseUrl}}/applications/{{jmsApplicationId}}/approve",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "applications",
+            "{{jmsApplicationId}}",
+            "approve"
+          ]
+        },
         "auth": {
           "type": "basic",
           "basic": [
-            { "key": "username", "value": "{{managerEmail}}", "type": "string" },
-            { "key": "password", "value": "{{managerPassword}}", "type": "string" }
+            {
+              "key": "username",
+              "value": "{{managerEmail}}",
+              "type": "string"
+            },
+            {
+              "key": "password",
+              "value": "{{managerPassword}}",
+              "type": "string"
+            }
           ]
         }
       },

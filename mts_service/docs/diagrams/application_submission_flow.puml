@@ -1,0 +1,145 @@
+@startuml
+title Подача заявки: основной флоу и альтернативные сценарии (ЛР3)
+
+actor "Клиент" as Client
+actor "Менеджер" as Manager
+
+participant "ApplicationController" as Api
+participant "ApplicationService" as Service
+database "mts_db" as Db
+participant "OutboxDispatcher\n(Quartz, 2с)" as Dispatcher
+queue "RabbitMQ\n(AMQP 1.0)" as Queue
+participant "TaigaSyncCommandListener\n(@JmsListener, JTA)" as TaigaListener
+participant "ApplicationTaigaSyncWorkflowService" as TaigaWf
+participant "TaigaTaskService\n(JCA)" as Jca
+participant "Taiga (EIS)" as Taiga
+participant "TaigaWebhookService" as Webhook
+participant "ApplicationApprovalWorkflowService" as ApprovalWf
+participant "ConnectionCommandListener\n(@JmsListener, JTA)" as ConnListener
+participant "ApplicationConnectionWorkflowService" as ConnWf
+
+== 1. Подача заявки ==
+
+Client -> Api : POST /applications
+Api -> Service : create(email, dto)
+Service -> Db : проверить баланс пользователя
+
+alt баланс < стоимости тарифа
+    Service --> Api : InsufficientFundsException
+    Api --> Client : 4xx, заявка не создана
+else баланс достаточен
+    group одна БД-транзакция
+        Service -> Db : save Application\n(status=PENDING_TAIGA_SYNC, taigaTaskId=null)
+        Service -> Db : outbox.enqueue(TaigaStoryRequestedMessage)
+    end
+    Service --> Api : ApplicationDto(status=PENDING_TAIGA_SYNC)
+    Api --> Client : 201 Created
+end
+
+== 2. Асинхронное создание карточки в Taiga ==
+
+loop каждые app.quartz.outbox.dispatch-interval-ms (2с)
+    Dispatcher -> Db : claimBatch() — выбрать NEW сообщения
+    Dispatcher -> Queue : send TaigaStoryRequestedMessage
+end
+
+Queue -> TaigaListener : TaigaStoryRequestedMessage\n(JMSXDeliveryCount = N)
+group JTA/XA транзакция (JMS receive + БД)
+    TaigaListener -> TaigaWf : createStoryForApplication(applicationId, attempt)
+    TaigaWf -> Db : findByIdForUpdate (PESSIMISTIC_WRITE)\nregister в message_inbox
+
+    alt сообщение уже обработано (inbox дубликат)
+        TaigaWf --> TaigaListener : skip (idempotent)
+    else taigaTaskId уже заполнен
+        TaigaWf -> Db : status=PENDING (если ещё PENDING_TAIGA_SYNC)
+    else Taiga доступна
+        TaigaWf -> Jca : createUserStoryForApplication(application)
+        Jca -> Taiga : POST /userstories (карточка в "New")
+        Taiga --> Jca : taigaTaskId
+        Jca --> TaigaWf : taigaTaskId
+        TaigaWf -> Db : taigaTaskId=..., status=PENDING
+    else Taiga недоступна, attempt < max-delivery-attempts
+        TaigaWf -> Jca : createUserStoryForApplication(application)
+        Jca -> Taiga : POST /userstories
+        Taiga --> Jca : ошибка (timeout/5xx)
+        TaigaWf --> TaigaListener : throw TaigaIntegrationException
+        note right of TaigaListener
+          JTA-транзакция откатывается,
+          сообщение НЕ подтверждается —
+          RabbitMQ повторно доставит его
+          (JMSXDeliveryCount++)
+        end note
+    else Taiga недоступна, attempt >= max-delivery-attempts
+        TaigaWf -> Db : status=FAILED_EXTERNAL\nrejectReason="Taiga integration unavailable: ..."
+        note right of TaigaWf
+          ERROR в логах.
+          Клиент видит FAILED_EXTERNAL
+          через GET /applications/{id}
+        end note
+    end
+end
+
+== 3. Менеджер берёт заявку в работу ==
+
+Manager -> Taiga : перенести карточку "New" -> "In progress"
+Taiga -> Webhook : webhook (status changed)
+Webhook -> Db : findByTaigaTaskIdForUpdate
+
+alt status == PENDING
+    Webhook -> Db : status=PROCESSING
+    Webhook -> Taiga : comment "Application is taken into processing"
+else status уже PROCESSING/иной (повторный/некорректный webhook)
+    Webhook -> Taiga : вернуть карточку обратно + комментарий с причиной
+end
+
+== 4. Менеджер одобряет запуск подключения ==
+
+Manager -> Taiga : перенести карточку "In progress" -> "Ready for test"
+Taiga -> Webhook : webhook (status changed)
+Webhook -> ApprovalWf : approve(application)
+ApprovalWf -> Db : findByTaigaTaskIdForUpdate, проверить status==PROCESSING
+ApprovalWf -> Db : проверить баланс пользователя
+
+alt баланс достаточен
+    group одна БД-транзакция
+        ApprovalWf -> Db : debit(amount), billing_transaction(type=DEBIT)
+        ApprovalWf -> Db : status=APPROVED
+        ApprovalWf -> Db : outbox.enqueue(ConnectionRequestedMessage)
+    end
+    note right of ApprovalWf
+      Карточка остаётся в "Ready for test"
+      до завершения JMS-подключения
+    end note
+else баланс недостаточен
+    ApprovalWf -> Db : status=REJECTED\nrejectReason="Not enough funds"
+    ApprovalWf -> Taiga : перенести карточку в "Archived" + комментарий
+end
+
+== 5. Асинхронное подключение (после успешного одобрения) ==
+
+loop каждые app.quartz.outbox.dispatch-interval-ms (2с)
+    Dispatcher -> Db : claimBatch() — выбрать NEW сообщения
+    Dispatcher -> Queue : send ConnectionRequestedMessage
+end
+
+Queue -> ConnListener : ConnectionRequestedMessage
+group JTA/XA транзакция
+    ConnListener -> ConnWf : connect(applicationId)
+    ConnWf -> Db : register в message_inbox, проверить status==APPROVED
+    ConnWf -> Db : status=CONNECTED
+    ConnWf -> Taiga : перенести карточку в "Done" + комментарий "Connection completed automatically"
+end
+
+== 6. Менеджер отклоняет заявку ==
+
+Manager -> Taiga : перенести карточку "New"/"In progress" -> "Archived"
+Taiga -> Webhook : webhook (status changed)
+Webhook -> Db : findByTaigaTaskIdForUpdate
+
+alt status в {PENDING, PROCESSING} (деньги ещё не списаны)
+    Webhook -> Db : status=REJECTED\nrejectReason="Rejected from Taiga"
+else status в {APPROVED, CONNECTED} (деньги уже списаны)
+    Webhook -> Taiga : запрещённый переход — вернуть карточку обратно + комментарий
+end
+
+@enduml

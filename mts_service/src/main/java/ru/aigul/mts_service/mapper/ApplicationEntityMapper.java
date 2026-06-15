@@ -23,7 +23,7 @@ public class ApplicationEntityMapper {
         application.setUser(user);
         application.setTariff(tariff);
         application.setAddress(dto.getAddress());
-        application.setStatus(ApplicationStatus.PENDING);
+        application.setStatus(ApplicationStatus.PENDING_TAIGA_SYNC);
         application.setLockedPrice(lockedPrice != null ? lockedPrice : BigDecimal.ZERO);
         application.setAdditionalServices(additionalServices != null ? additionalServices : new HashSet<>());
         return application;

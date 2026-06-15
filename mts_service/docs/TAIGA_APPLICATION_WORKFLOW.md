@@ -18,6 +18,7 @@ Taiga не должна быть единственным источником �
 
 | Колонка Taiga | Внутренний смысл | Внутренний статус |
 | --- | --- | --- |
+| _(нет карточки)_ | Заявка сохранена, story в Taiga создается асинхронно. | `PENDING_TAIGA_SYNC` |
 | `New` | Заявка создана и ожидает реакции менеджера. | `PENDING` |
 | `In progress` | Менеджер взял заявку в работу. Деньги еще не списываются. | `PROCESSING` |
 | `Ready for test` | Менеджер одобрил заявку для запуска подключения. Это approval gate. | `APPROVED` после успешного списания |
@@ -63,14 +64,17 @@ Taiga физически может позволить перетащить ка
 
 Источник: `POST /applications`.
 
+Создание заявки и создание user story в Taiga разнесены по двум транзакциям и связаны через transactional outbox + JMS, по той же схеме, что approval/connection (см. `ConnectionRequestedMessage`/`ApprovalRequestedMessage`). Это сделано, чтобы не держать XA-транзакцию БД на время блокирующего HTTP-вызова в Taiga и не оставлять "осиротевшие" user story при сбое коммита.
+
 Действия:
 
-1. MTS Service создает заявку `PENDING`.
-2. Создает user story в Taiga.
-3. Сохраняет `taigaTaskId`.
-4. Карточка находится в `New`.
+1. MTS Service проверяет баланс, сохраняет заявку со статусом `PENDING_TAIGA_SYNC` (`taigaTaskId = null`) и в той же транзакции кладет `TaigaStoryRequestedMessage` в outbox. Ответ `POST /applications` возвращается клиенту сразу после этого шага.
+2. `OutboxDispatcher` (Quartz, интервал `app.quartz.outbox.dispatch-interval-ms`) отправляет сообщение в очередь `app.messaging.taiga-sync.queue-address`.
+3. `TaigaSyncCommandListener` (`@JmsListener`, транзакция JTA) принимает сообщение, регистрирует его в inbox (`taiga-sync-listener`) и вызывает `ApplicationTaigaSyncWorkflowService.createStoryForApplication`.
+4. При успехе: создается user story в Taiga (карточка в `New`), `taigaTaskId` сохраняется, статус меняется на `PENDING`.
+5. При ошибке Taiga (недоступность/неверный токен): сообщение возвращается в очередь (JMS redelivery), `JMSXDeliveryCount` логируется. После `app.messaging.taiga-sync.max-delivery-attempts` неудачных попыток заявка переводится в `FAILED_EXTERNAL` с `rejectReason = "Taiga integration unavailable: ..."`, что видно через `GET /applications/{id}`, плюс ERROR в логах.
 
-Если Taiga недоступна или токен неверный, создание заявки откатывается. Это важно, потому что без карточки в корпоративной системе заявка не должна попадать в дальнейшую обработку.
+Заявка в статусе `PENDING_TAIGA_SYNC`/`FAILED_EXTERNAL` не имеет `taigaTaskId`, поэтому webhook-переходы и approve/reject на ней не применимы — это ожидаемо, т.к. webhook ищет заявку по `taigaTaskId`.
 
 ### Менеджер берет заявку в работу
 

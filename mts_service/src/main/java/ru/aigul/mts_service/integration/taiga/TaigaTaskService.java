@@ -180,7 +180,7 @@ public class TaigaTaskService {
 
     private long statusIdFor(ApplicationStatus status) {
         return switch (status) {
-            case PENDING -> newStatusId;
+            case PENDING_TAIGA_SYNC, PENDING -> newStatusId;
             case PROCESSING -> inProgressStatusId;
             case APPROVED -> readyForTestStatusId;
             case CONNECTED -> doneStatusId;

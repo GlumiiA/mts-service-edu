@@ -12,12 +12,12 @@ import ru.aigul.mts_service.dto.application.*;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
 import ru.aigul.mts_service.exception.InsufficientFundsException;
 import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
-import ru.aigul.mts_service.exception.TaigaIntegrationException;
 import ru.aigul.mts_service.exception.TariffNotFoundException;
 import ru.aigul.mts_service.exception.UserNotFoundException;
-import ru.aigul.mts_service.integration.taiga.TaigaTaskService;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
 import ru.aigul.mts_service.mapper.ApplicationEntityMapper;
+import ru.aigul.mts_service.messaging.dto.TaigaStoryRequestedMessage;
+import ru.aigul.mts_service.messaging.outbox.OutboxService;
 import ru.aigul.mts_service.model.Application;
 import ru.aigul.mts_service.model.ApplicationStatus;
 import ru.aigul.mts_service.model.Tariff;
@@ -29,10 +29,12 @@ import ru.aigul.mts_service.repository.TariffCityPriceRepository;
 import ru.aigul.mts_service.repository.TariffRepository;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
 @Slf4j
@@ -46,8 +48,8 @@ public class ApplicationService {
     private final ApplicationMapper applicationMapper;
     private final UserService userService;
     private final LocalBillingService localBillingService;
-    private final TaigaTaskService taigaTaskService;
     private final ApplicationEntityMapper applicationEntityMapper;
+    private final OutboxService outboxService;
 
     @Transactional(readOnly = true)
     public List<Application> getApplicationsForUserEmail(String email) {
@@ -104,12 +106,8 @@ public class ApplicationService {
 
         application = applicationRepository.save(application);
 
-        Optional<Long> taigaTaskId = taigaTaskService.createUserStoryForApplication(application);
-        if (taigaTaskId.isEmpty()) {
-            throw new TaigaIntegrationException("Taiga task was not created for applicationId=" + application.getId());
-        }
-        application.setTaigaTaskId(taigaTaskId.get());
-        application = applicationRepository.save(application);
+        outboxService.enqueueTaigaStoryRequested(new TaigaStoryRequestedMessage(
+                UUID.randomUUID().toString(), application.getId(), null, OffsetDateTime.now()));
 
         return applicationMapper.toDto(application);
     }

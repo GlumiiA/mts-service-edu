@@ -8,6 +8,7 @@ import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 import ru.aigul.mts_service.messaging.dto.ApprovalRequestedMessage;
 import ru.aigul.mts_service.messaging.dto.ConnectionRequestedMessage;
+import ru.aigul.mts_service.messaging.dto.TaigaStoryRequestedMessage;
 import ru.aigul.mts_service.model.OutboxMessage;
 import ru.aigul.mts_service.model.OutboxMessageStatus;
 import ru.aigul.mts_service.repository.OutboxMessageRepository;
@@ -27,6 +28,9 @@ public class OutboxService {
     @Value("${app.messaging.connection.queue-address}")
     private String connectionQueueAddress;
 
+    @Value("${app.messaging.taiga-sync.queue-address}")
+    private String taigaSyncQueueAddress;
+
     @Transactional(propagation = Propagation.MANDATORY)
     public void enqueueApprovalRequested(ApprovalRequestedMessage message) {
         persist(approvalQueueAddress, "approval-requested", message.messageId(), message);
@@ -35,6 +39,11 @@ public class OutboxService {
     @Transactional(propagation = Propagation.MANDATORY)
     public void enqueueConnectionRequested(ConnectionRequestedMessage message) {
         persist(connectionQueueAddress, "connection-requested", message.messageId(), message);
+    }
+
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void enqueueTaigaStoryRequested(TaigaStoryRequestedMessage message) {
+        persist(taigaSyncQueueAddress, "taiga-story-requested", message.messageId(), message);
     }
 
     private void persist(String destination, String eventType, String messageId, Object payload) {
