@@ -8,13 +8,15 @@ import org.quartz.SimpleTrigger;
 import org.quartz.Trigger;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationContext;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import org.springframework.scheduling.quartz.MethodInvokingJobDetailFactoryBean;
+import org.springframework.scheduling.quartz.JobDetailFactoryBean;
 import org.springframework.scheduling.quartz.SchedulerFactoryBean;
 import org.springframework.scheduling.quartz.SimpleTriggerFactoryBean;
 import ru.aigul.mts_service.messaging.inbox.MessageInboxCleanupJob;
-import ru.aigul.mts_service.messaging.outbox.OutboxDispatcher;
+import ru.aigul.mts_service.messaging.outbox.OutboxDispatchJob;
+import ru.aigul.mts_service.messaging.outbox.OutboxRecoveryJob;
 
 import java.util.Properties;
 
@@ -32,29 +34,26 @@ public class QuartzSchedulerConfig {
     private long inboxCleanupIntervalMs;
 
     @Bean(name = "outboxDispatchJobDetail")
-    public MethodInvokingJobDetailFactoryBean outboxDispatchJobDetail(OutboxDispatcher outboxDispatcher) {
-        MethodInvokingJobDetailFactoryBean job = new MethodInvokingJobDetailFactoryBean();
-        job.setTargetObject(outboxDispatcher);
-        job.setTargetMethod("dispatch");
-        job.setConcurrent(false);
+    public JobDetailFactoryBean outboxDispatchJobDetail() {
+        JobDetailFactoryBean job = new JobDetailFactoryBean();
+        job.setJobClass(OutboxDispatchJob.class);
+        job.setDurability(true);
         return job;
     }
 
     @Bean(name = "outboxRecoveryJobDetail")
-    public MethodInvokingJobDetailFactoryBean outboxRecoveryJobDetail(OutboxDispatcher outboxDispatcher) {
-        MethodInvokingJobDetailFactoryBean job = new MethodInvokingJobDetailFactoryBean();
-        job.setTargetObject(outboxDispatcher);
-        job.setTargetMethod("recoverStaleProcessing");
-        job.setConcurrent(false);
+    public JobDetailFactoryBean outboxRecoveryJobDetail() {
+        JobDetailFactoryBean job = new JobDetailFactoryBean();
+        job.setJobClass(OutboxRecoveryJob.class);
+        job.setDurability(true);
         return job;
     }
 
     @Bean(name = "inboxCleanupJobDetail")
-    public MethodInvokingJobDetailFactoryBean inboxCleanupJobDetail(MessageInboxCleanupJob messageInboxCleanupJob) {
-        MethodInvokingJobDetailFactoryBean job = new MethodInvokingJobDetailFactoryBean();
-        job.setTargetObject(messageInboxCleanupJob);
-        job.setTargetMethod("cleanupExpired");
-        job.setConcurrent(false);
+    public JobDetailFactoryBean inboxCleanupJobDetail() {
+        JobDetailFactoryBean job = new JobDetailFactoryBean();
+        job.setJobClass(MessageInboxCleanupJob.class);
+        job.setDurability(true);
         return job;
     }
 
@@ -92,30 +91,36 @@ public class QuartzSchedulerConfig {
     }
 
     @Bean
+    public AutowiringSpringBeanJobFactory jobFactory(ApplicationContext applicationContext) {
+        AutowiringSpringBeanJobFactory factory = new AutowiringSpringBeanJobFactory();
+        factory.setApplicationContext(applicationContext);
+        return factory;
+    }
+
+    @Bean
     public SchedulerFactoryBean schedulerFactoryBean(
+            AutowiringSpringBeanJobFactory jobFactory,
             @Qualifier("outboxDispatchTrigger") Trigger outboxDispatchTrigger,
             @Qualifier("outboxRecoveryTrigger") Trigger outboxRecoveryTrigger,
             @Qualifier("inboxCleanupTrigger") Trigger inboxCleanupTrigger) {
         SchedulerFactoryBean factory = new SchedulerFactoryBean();
 
         Properties props = new Properties();
-
         props.setProperty("org.quartz.scheduler.instanceName", "MtsServiceScheduler");
         props.setProperty("org.quartz.scheduler.instanceId", "AUTO");
-
         props.setProperty("org.quartz.threadPool.class", "org.quartz.simpl.SimpleThreadPool");
         props.setProperty("org.quartz.threadPool.threadCount", "5");
         props.setProperty("org.quartz.threadPool.threadPriority", "5");
-
         props.setProperty("org.quartz.scheduler.wrapJobExecutionInUserTransaction", "false");
 
         factory.setQuartzProperties(props);
+        factory.setJobFactory(jobFactory);
         factory.setWaitForJobsToCompleteOnShutdown(true);
         factory.setOverwriteExistingJobs(true);
         factory.setAutoStartup(true);
         factory.setTriggers(outboxDispatchTrigger, outboxRecoveryTrigger, inboxCleanupTrigger);
 
-        log.info("Quartz scheduler configured for outbox/inbox jobs");
+        log.info("Quartz scheduler configured with proper Job implementations");
 
         return factory;
     }
@@ -129,7 +134,3 @@ public class QuartzSchedulerConfig {
         return scheduler;
     }
 }
-
-
-
-

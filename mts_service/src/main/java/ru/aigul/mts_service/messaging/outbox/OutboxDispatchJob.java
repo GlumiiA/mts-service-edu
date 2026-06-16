@@ -1,20 +1,18 @@
-package ru.aigul.mts_service.messaging.inbox;
+package ru.aigul.mts_service.messaging.outbox;
 
 import org.quartz.JobExecutionContext;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.scheduling.quartz.QuartzJobBean;
 import org.springframework.stereotype.Component;
 
-import java.time.OffsetDateTime;
-
 @Component
-public class MessageInboxCleanupJob extends QuartzJobBean {
+public class OutboxDispatchJob extends QuartzJobBean {
 
     @Autowired
-    private MessageInboxService messageInboxService;
+    private OutboxDispatcher outboxDispatcher;
 
     @Override
     protected void executeInternal(JobExecutionContext context) {
-        messageInboxService.cleanupExpired(OffsetDateTime.now());
+        outboxDispatcher.dispatch();
     }
 }

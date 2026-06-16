@@ -18,6 +18,7 @@ import ru.aigul.mts_service.mapper.ApplicationMapper;
 import ru.aigul.mts_service.mapper.ApplicationEntityMapper;
 import ru.aigul.mts_service.messaging.dto.TaigaStoryRequestedMessage;
 import ru.aigul.mts_service.messaging.outbox.OutboxService;
+import ru.aigul.mts_service.integration.taiga.TaigaTaskService;
 import ru.aigul.mts_service.model.Application;
 import ru.aigul.mts_service.model.ApplicationStatus;
 import ru.aigul.mts_service.model.Tariff;
@@ -50,6 +51,7 @@ public class ApplicationService {
     private final LocalBillingService localBillingService;
     private final ApplicationEntityMapper applicationEntityMapper;
     private final OutboxService outboxService;
+    private final TaigaTaskService taigaTaskService;
 
     @Transactional(readOnly = true)
     public List<Application> getApplicationsForUserEmail(String email) {
@@ -143,6 +145,7 @@ public class ApplicationService {
         application.setStatus(ApplicationStatus.REJECTED);
         application.setRejectReason(dto.getReason());
         application = applicationRepository.save(application);
+        taigaTaskService.moveApplicationToArchived(application, dto.getReason());
         return applicationMapper.toDto(application);
     }
 }

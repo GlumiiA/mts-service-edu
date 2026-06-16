@@ -493,21 +493,65 @@ ack сообщения (или наоборот) — XA-координатор �
 
 `QuartzSchedulerConfig` регистрирует три периодические задачи:
 
-| Job | Метод | Интервал | Назначение |
+| Job-класс | `JobDetail` / `Trigger` | Интервал | Назначение |
 | --- | --- | --- | --- |
-| `outboxDispatchJobDetail` / `outboxDispatchTrigger` | `OutboxDispatcher.dispatch()` | 2 сек (`app.quartz.outbox.dispatch-interval-ms`) | Забирает порции `NEW`-сообщений из outbox и отправляет их в JMS (RabbitMQ). Это основной "мотор" асинхронной обработки — именно он превращает запись в outbox-таблице в реальное JMS-сообщение. |
-| `outboxRecoveryJobDetail` / `outboxRecoveryTrigger` | `OutboxDispatcher.recoverStaleProcessing()` | 60 сек (`app.quartz.outbox.recovery-interval-ms`) | Возвращает в `NEW` сообщения, застрявшие в `PROCESSING` дольше 5 минут (например, узел упал между отправкой и фиксацией статуса) — защита от "потерянных" задач. |
-| `inboxCleanupJobDetail` / `inboxCleanupTrigger` | `MessageInboxCleanupJob.cleanupExpired()` | 1 час (`app.quartz.inbox.cleanup-interval-ms`) | Удаляет из `message_inbox` записи старше `app.messaging.inbox.retention-hours` (24ч) — иначе таблица дедупликации растёт неограниченно. |
+| `OutboxDispatchJob` | `outboxDispatchJobDetail` / `outboxDispatchTrigger` | 2 сек (`app.quartz.outbox.dispatch-interval-ms`) | Забирает порции `NEW`-сообщений из outbox и отправляет их в JMS (RabbitMQ). Основной «мотор» асинхронной обработки — превращает запись в outbox-таблице в реальное JMS-сообщение. |
+| `OutboxRecoveryJob` | `outboxRecoveryJobDetail` / `outboxRecoveryTrigger` | 60 сек (`app.quartz.outbox.recovery-interval-ms`) | Возвращает в `NEW` сообщения, застрявшие в `PROCESSING` дольше 5 минут (узел упал между отправкой и фиксацией статуса) — защита от «потерянных» задач. |
+| `MessageInboxCleanupJob` | `inboxCleanupJobDetail` / `inboxCleanupTrigger` | 1 час (`app.quartz.inbox.cleanup-interval-ms`) | Удаляет из `message_inbox` записи старше `app.messaging.inbox.retention-hours` (24ч) — иначе таблица дедупликации растёт неограниченно. |
 
-Конфигурация (`QuartzSchedulerConfig`):
+### Архитектура Job-классов
+
+Все три класса реализуют Quartz `Job` через базовый класс Spring `QuartzJobBean`:
+
+```java
+@Component
+public class OutboxDispatchJob extends QuartzJobBean {
+
+    @Autowired
+    private OutboxDispatcher outboxDispatcher;
+
+    @Override
+    protected void executeInternal(JobExecutionContext context) {
+        outboxDispatcher.dispatch();
+    }
+}
+```
+
+`QuartzJobBean` реализует `org.quartz.Job` и делегирует вызов в `executeInternal` —
+именно этот метод Quartz вызывает по расписанию. `@Autowired` работает благодаря
+`AutowiringSpringBeanJobFactory`: при каждом срабатывании триггера Quartz создаёт
+новый экземпляр job-класса, а фабрика немедленно autowire-ит его через
+`AutowireCapableBeanFactory.autowireBean(job)`.
+
+```java
+public class AutowiringSpringBeanJobFactory extends SpringBeanJobFactory
+        implements ApplicationContextAware {
+
+    private AutowireCapableBeanFactory beanFactory;
+
+    @Override
+    public void setApplicationContext(ApplicationContext context) {
+        beanFactory = context.getAutowireCapableBeanFactory();
+    }
+
+    @Override
+    protected Object createJobInstance(TriggerFiredBundle bundle) throws Exception {
+        Object job = super.createJobInstance(bundle);
+        beanFactory.autowireBean(job);
+        return job;
+    }
+}
+```
+
+Фабрика регистрируется в `SchedulerFactoryBean` через `factory.setJobFactory(jobFactory)`.
+`JobDetailFactoryBean` указывает Quartz конкретный класс задачи через `setJobClass(...)`:
 
 ```java
 @Bean(name = "outboxDispatchJobDetail")
-public MethodInvokingJobDetailFactoryBean outboxDispatchJobDetail(OutboxDispatcher outboxDispatcher) {
-    MethodInvokingJobDetailFactoryBean job = new MethodInvokingJobDetailFactoryBean();
-    job.setTargetObject(outboxDispatcher);
-    job.setTargetMethod("dispatch");
-    job.setConcurrent(false);
+public JobDetailFactoryBean outboxDispatchJobDetail() {
+    JobDetailFactoryBean job = new JobDetailFactoryBean();
+    job.setJobClass(OutboxDispatchJob.class);
+    job.setDurability(true);
     return job;
 }
 
@@ -523,11 +567,9 @@ public SimpleTriggerFactoryBean outboxDispatchTrigger(
 }
 ```
 
-`setConcurrent(false)` — важно: на каждом узле job не запускается
-параллельно с самим собой (нет гонки внутри одного `SchedulerFactoryBean`).
 Между двумя узлами гонка возможна (оба запускают свой Quartz-scheduler), но
 она безопасна за счёт `claimBatch()`/`recoverStaleProcessing()`, работающих
-через обычные `@Transactional`-блоки с UPDATE статусов — конкурентные узлы
+через `@Transactional`-блоки с UPDATE статусов — конкурентные узлы
 просто возьмут разные строки или последовательно обработают одни и те же
 (идемпотентно за счёт `attempts`/`status`).
 
