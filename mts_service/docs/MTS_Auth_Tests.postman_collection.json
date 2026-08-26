@@ -1,0 +1,1680 @@
+{
+  "info": {
+    "name": "MTS Service \u2014 RBAC Authorization Tests",
+    "description": "\u0422\u0435\u0441\u0442\u044b \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438 \u0434\u043b\u044f JAAS + HTTP Basic \u0430\u0443\u0442\u0435\u043d\u0442\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u0438 \u0441 \u0440\u043e\u043b\u044f\u043c\u0438 USER, MANAGER, ADMIN.\n\n\u0422\u0435\u0441\u0442\u043e\u0432\u044b\u0435 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u0438 (\u043f\u0430\u0440\u043e\u043b\u044c \u0434\u043b\u044f \u0432\u0441\u0435\u0445: password):\n- user@test.com (USER) \u2014 CATALOG_READ, APPLICATION_CREATE, APPLICATION_READ_OWN, ACCOUNT_TOPUP\n- manager@test.com (MANAGER) \u2014 CATALOG_READ, APPLICATION_READ_ALL, APPLICATION_APPROVE, APPLICATION_REJECT\n- admin@test.com (ADMIN) \u2014 CATALOG_READ, APPLICATION_READ_ALL, TARIFF_MANAGE, SERVICE_MANAGE, USER_MANAGE, SEARCH_REINDEX",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    { "key": "baseUrl", "value": "http://localhost:8080" },
+    { "key": "userEmail", "value": "user@test.com" },
+    { "key": "userPassword", "value": "password" },
+    { "key": "managerEmail", "value": "manager@test.com" },
+    { "key": "managerPassword", "value": "password" },
+    { "key": "adminEmail", "value": "admin@test.com" },
+    { "key": "adminPassword", "value": "password" },
+    { "key": "applicationId", "value": "" },
+    { "key": "approvalCorrelationId", "value": "" },
+    { "key": "applicationIdForReject", "value": "" },
+    { "key": "newTariffId", "value": "" },
+    { "key": "poorUserEmail", "value": "pooruser@test.com" },
+    { "key": "poorUserPassword", "value": "password" },
+    { "key": "poorAppId1", "value": "" },
+    { "key": "poorAppId2", "value": "" }
+  ],
+  "item": [
+    {
+      "name": "1. \u0420\u0435\u0433\u0438\u0441\u0442\u0440\u0430\u0446\u0438\u044f (\u043f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u044d\u043d\u0434\u043f\u043e\u0438\u043d\u0442)",
+      "item": [
+        {
+          "name": "Регистрация нового пользователя → 201",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"newuser_{{$timestamp}}@test.com\",\n  \"name\": \"Test User\",\n  \"password\": \"password123\"\n}"
+            },
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Роль — USER', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.role).to.eql('USER');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Регистрация дубликата email → 409",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/api/users", "host": ["{{baseUrl}}"], "path": ["api", "users"] },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"user@test.com\",\n  \"name\": \"Duplicate\",\n  \"password\": \"password123\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 409 Conflict', () => pm.response.to.have.status(409));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "2. \u0410\u0443\u0442\u0435\u043d\u0442\u0438\u0444\u0438\u043a\u0430\u0446\u0438\u044f",
+      "item": [
+        {
+          "name": "\u0411\u0435\u0437 credentials \u2192 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/mobile", "host": ["{{baseUrl}}"], "path": ["catalog", "mobile"] },
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u041d\u0435\u0432\u0435\u0440\u043d\u044b\u0439 \u043f\u0430\u0440\u043e\u043b\u044c \u2192 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/mobile", "host": ["{{baseUrl}}"], "path": ["catalog", "mobile"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "user@test.com" },
+                { "key": "password", "value": "wrongpassword" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u041d\u0435\u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0449\u0438\u0439 \u043f\u043e\u043b\u044c\u0437\u043e\u0432\u0430\u0442\u0435\u043b\u044c \u2192 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/mobile", "host": ["{{baseUrl}}"], "path": ["catalog", "mobile"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "nonexistent@test.com" },
+                { "key": "password", "value": "password" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u0412\u0435\u0440\u043d\u044b\u0435 credentials (USER) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/mobile", "host": ["{{baseUrl}}"], "path": ["catalog", "mobile"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "3. \u041a\u0430\u0442\u0430\u043b\u043e\u0433 (CATALOG_READ \u2014 \u0432\u0441\u0435 \u0440\u043e\u043b\u0438)",
+      "item": [
+        {
+          "name": "USER \u0447\u0438\u0442\u0430\u0435\u0442 \u043a\u0430\u0442\u0430\u043b\u043e\u0433 home \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/home?cityId=1", "host": ["{{baseUrl}}"], "path": ["catalog", "home"], "query": [{ "key": "cityId", "value": "1" }] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 items \u0438 nextCursor', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('items');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u0447\u0438\u0442\u0430\u0435\u0442 \u043a\u0430\u0442\u0430\u043b\u043e\u0433 mobile \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/mobile", "host": ["{{baseUrl}}"], "path": ["catalog", "mobile"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u0447\u0438\u0442\u0430\u0435\u0442 \u043a\u0430\u0442\u0430\u043b\u043e\u0433 devices \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/devices", "host": ["{{baseUrl}}"], "path": ["catalog", "devices"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u041a\u0430\u0442\u0430\u043b\u043e\u0433 landline \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/landline?cityId=1", "host": ["{{baseUrl}}"], "path": ["catalog", "landline"], "query": [{ "key": "cityId", "value": "1" }] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u041a\u0430\u0442\u0430\u043b\u043e\u0433 satellite-tv \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/satellite-tv?cityId=1", "host": ["{{baseUrl}}"], "path": ["catalog", "satellite-tv"], "query": [{ "key": "cityId", "value": "1" }] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u041a\u0430\u0442\u0430\u043b\u043e\u0433 business \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/business", "host": ["{{baseUrl}}"], "path": ["catalog", "business"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u0414\u0435\u0442\u0430\u043b\u044c \u0442\u0430\u0440\u0438\u0444\u0430 \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/tariffs/1?cityId=1", "host": ["{{baseUrl}}"], "path": ["catalog", "tariffs", "1"], "query": [{ "key": "cityId", "value": "1" }] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 name \u0438 category', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('name');",
+                  "  pm.expect(body).to.have.property('category');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0433\u043e\u0440\u043e\u0434\u043e\u0432 \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/cities", "host": ["{{baseUrl}}"], "path": ["catalog", "cities"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u0413\u043e\u0440\u043e\u0434\u0430 \u2014 \u043c\u0430\u0441\u0441\u0438\u0432', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an('array');",
+                  "  pm.expect(body.length).to.be.greaterThan(0);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u0421\u043f\u0440\u0430\u0432\u043e\u0447\u043d\u0438\u043a \u0441\u0435\u0440\u0432\u0438\u0441\u043e\u0432 \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/catalog/services", "host": ["{{baseUrl}}"], "path": ["catalog", "services"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u0421\u0435\u0440\u0432\u0438\u0441\u044b \u2014 \u043c\u0430\u0441\u0441\u0438\u0432', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u041f\u043e\u0438\u0441\u043a \u0442\u0430\u0440\u0438\u0444\u043e\u0432 (USER) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/catalog/search?q=\u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442",
+              "host": ["{{baseUrl}}"],
+              "path": ["catalog", "search"],
+              "query": [{ "key": "q", "value": "\u0438\u043d\u0442\u0435\u0440\u043d\u0435\u0442" }]
+            },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 items', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('items');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "4. \u0417\u0430\u044f\u0432\u043a\u0438 \u2014 \u0441\u043e\u0437\u0434\u0430\u043d\u0438\u0435 (APPLICATION_CREATE \u2014 \u0442\u043e\u043b\u044c\u043a\u043e USER)",
+      "item": [
+        {
+          "name": "USER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0437\u0430\u044f\u0432\u043a\u0443 (\u0434\u043b\u044f approve) \u2192 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tariffId\": 1,\n  \"address\": \"\u0443\u043b. \u0422\u0435\u0441\u0442\u043e\u0432\u0430\u044f, \u0434. 1\",\n  \"additionalServiceIds\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('\u0421\u0442\u0430\u0442\u0443\u0441 \u0437\u0430\u044f\u0432\u043a\u0438 \u2014 PENDING', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "  pm.collectionVariables.set('applicationId', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0437\u0430\u044f\u0432\u043a\u0443 (\u0434\u043b\u044f reject) \u2192 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tariffId\": 1,\n  \"address\": \"\u0443\u043b. \u0422\u0435\u0441\u0442\u043e\u0432\u0430\u044f, \u0434. 2\",\n  \"additionalServiceIds\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('\u0421\u043e\u0445\u0440\u0430\u043d\u044f\u0435\u043c ID \u0434\u043b\u044f reject', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "  pm.collectionVariables.set('applicationIdForReject', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tariffId\": 1,\n  \"address\": \"\u0443\u043b. \u0422\u0435\u0441\u0442\u043e\u0432\u0430\u044f, \u0434. 1\",\n  \"additionalServiceIds\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 APPLICATION_CREATE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tariffId\": 1,\n  \"address\": \"\u0443\u043b. \u0422\u0435\u0441\u0442\u043e\u0432\u0430\u044f, \u0434. 1\",\n  \"additionalServiceIds\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 APPLICATION_CREATE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "5. \u0417\u0430\u044f\u0432\u043a\u0438 \u2014 \u0447\u0442\u0435\u043d\u0438\u0435",
+      "item": [
+        {
+          "name": "USER \u0447\u0438\u0442\u0430\u0435\u0442 \u0441\u0432\u043e\u0438 \u0437\u0430\u044f\u0432\u043a\u0438 (APPLICATION_READ_OWN) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 items', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('items');",
+                  "  pm.expect(body.items).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u0447\u0438\u0442\u0430\u0435\u0442 \u0434\u0435\u0442\u0430\u043b\u044c \u0437\u0430\u044f\u0432\u043a\u0438 \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications/{{applicationId}}", "host": ["{{baseUrl}}"], "path": ["applications", "{{applicationId}}"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u0414\u0435\u0442\u0430\u043b\u044c \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 id \u0438 status', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('id');",
+                  "  pm.expect(body).to.have.property('status');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u0447\u0438\u0442\u0430\u0435\u0442 \u0432\u0441\u0435 \u0437\u0430\u044f\u0432\u043a\u0438 (APPLICATION_READ_ALL) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u0447\u0438\u0442\u0430\u0435\u0442 \u0432\u0441\u0435 \u0437\u0430\u044f\u0432\u043a\u0438 (APPLICATION_READ_ALL) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "6. \u0417\u0430\u044f\u0432\u043a\u0438 \u2014 \u043e\u0434\u043e\u0431\u0440\u0435\u043d\u0438\u0435 (APPLICATION_APPROVE \u2014 MANAGER)",
+      "item": [
+        {
+          "name": "MANAGER requests async approval via JMS \u2192 202",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications/{{applicationId}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{applicationId}}", "approve"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('Async approval command accepted', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.applicationId).to.eql(Number(pm.collectionVariables.get('applicationId')));",
+                  "  pm.expect(body).to.have.property('correlationId');",
+                  "  pm.expect(body.status).to.eql('ACCEPTED');",
+                  "  pm.collectionVariables.set('approvalCorrelationId', body.correlationId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u043f\u044b\u0442\u0430\u0435\u0442\u0441\u044f \u043e\u0434\u043e\u0431\u0440\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications/1/approve", "host": ["{{baseUrl}}"], "path": ["applications", "1", "approve"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 APPLICATION_APPROVE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u043f\u044b\u0442\u0430\u0435\u0442\u0441\u044f \u043e\u0434\u043e\u0431\u0440\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications/1/approve", "host": ["{{baseUrl}}"], "path": ["applications", "1", "approve"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 APPLICATION_APPROVE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "7. \u0417\u0430\u044f\u0432\u043a\u0438 \u2014 \u043e\u0442\u043a\u043b\u043e\u043d\u0435\u043d\u0438\u0435 (APPLICATION_REJECT \u2014 MANAGER)",
+      "item": [
+        {
+          "name": "MANAGER \u043e\u0442\u043a\u043b\u043e\u043d\u044f\u0435\u0442 \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 200",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications/{{applicationIdForReject}}/reject", "host": ["{{baseUrl}}"], "path": ["applications", "{{applicationIdForReject}}", "reject"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u043e\u0432\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u0421\u0442\u0430\u0442\u0443\u0441 \u2014 REJECTED', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('REJECTED');",
+                  "  pm.expect(body.rejectReason).to.eql('\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043e\u0447\u043d\u043e \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442\u043e\u0432');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u043f\u044b\u0442\u0430\u0435\u0442\u0441\u044f \u043e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications/1/reject", "host": ["{{baseUrl}}"], "path": ["applications", "1", "reject"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"\u0422\u0435\u0441\u0442\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 APPLICATION_REJECT', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u043f\u044b\u0442\u0430\u0435\u0442\u0441\u044f \u043e\u0442\u043a\u043b\u043e\u043d\u0438\u0442\u044c \u0437\u0430\u044f\u0432\u043a\u0443 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications/1/reject", "host": ["{{baseUrl}}"], "path": ["applications", "1", "reject"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"\u0422\u0435\u0441\u0442\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 APPLICATION_REJECT', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "8. \u041f\u043e\u043f\u043e\u043b\u043d\u0435\u043d\u0438\u0435 \u0431\u0430\u043b\u0430\u043d\u0441\u0430 (ACCOUNT_TOPUP \u2014 \u0442\u043e\u043b\u044c\u043a\u043e USER)",
+      "item": [
+        {
+          "name": "USER \u043f\u043e\u043f\u043e\u043b\u043d\u044f\u0435\u0442 \u0431\u0430\u043b\u0430\u043d\u0441 \u2192 200",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/account/balance/top-up", "host": ["{{baseUrl}}"], "path": ["account", "balance", "top-up"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 payment_url', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('payment_url');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u043f\u043e\u043f\u043e\u043b\u043d\u044f\u0435\u0442 \u0431\u0430\u043b\u0430\u043d\u0441 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/account/balance/top-up", "host": ["{{baseUrl}}"], "path": ["account", "balance", "top-up"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 ACCOUNT_TOPUP', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u043f\u043e\u043f\u043e\u043b\u043d\u044f\u0435\u0442 \u0431\u0430\u043b\u0430\u043d\u0441 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/account/balance/top-up", "host": ["{{baseUrl}}"], "path": ["account", "balance", "top-up"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 1000.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 ACCOUNT_TOPUP', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "9. \u0410\u0434\u043c\u0438\u043d \u2014 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0442\u0430\u0440\u0438\u0444\u0430\u043c\u0438 (TARIFF_MANAGE \u2014 \u0442\u043e\u043b\u044c\u043a\u043e ADMIN)",
+      "item": [
+        {
+          "name": "ADMIN \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0442\u0430\u0440\u0438\u0444 \u2192 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\u0422\u0435\u0441\u0442\u043e\u0432\u044b\u0439 \u0442\u0430\u0440\u0438\u0444\",\n  \"category\": \"MOBILE\",\n  \"price\": 500.00,\n  \"description\": \"\u0422\u0430\u0440\u0438\u0444 \u0434\u043b\u044f \u0442\u0435\u0441\u0442\u0438\u0440\u043e\u0432\u0430\u043d\u0438\u044f\",\n  \"internet_gb\": 30,\n  \"calls_minutes\": 500,\n  \"sms_count\": 100\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 id', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('id');",
+                  "  pm.collectionVariables.set('newTariffId', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0442\u0430\u0440\u0438\u0444 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\u0425\u0430\u043a\u0435\u0440\u0441\u043a\u0438\u0439 \u0442\u0430\u0440\u0438\u0444\",\n  \"category\": \"MOBILE\",\n  \"price\": 0.01\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 TARIFF_MANAGE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0442\u0430\u0440\u0438\u0444 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Manager \u0442\u0430\u0440\u0438\u0444\",\n  \"category\": \"MOBILE\",\n  \"price\": 100.00\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 TARIFF_MANAGE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "ADMIN \u0430\u0440\u0445\u0438\u0432\u0438\u0440\u0443\u0435\u0442 \u0442\u0430\u0440\u0438\u0444 \u2192 200",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs/{{newTariffId}}/archive", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs", "{{newTariffId}}", "archive"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u0421\u0442\u0430\u0442\u0443\u0441 \u2014 ARCHIVED', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('ARCHIVED');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "10. \u0410\u0434\u043c\u0438\u043d \u2014 \u0443\u043f\u0440\u0430\u0432\u043b\u0435\u043d\u0438\u0435 \u0441\u0435\u0440\u0432\u0438\u0441\u0430\u043c\u0438 (SERVICE_MANAGE \u2014 \u0442\u043e\u043b\u044c\u043a\u043e ADMIN)",
+      "item": [
+        {
+          "name": "ADMIN \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0441\u0435\u0440\u0432\u0438\u0441 \u2192 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/admin/services", "host": ["{{baseUrl}}"], "path": ["admin", "services"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\u0410\u043d\u0442\u0438\u0432\u0438\u0440\u0443\u0441 \u0422\u0435\u0441\u0442\",\n  \"price\": 150.00,\n  \"description\": \"\u0417\u0430\u0449\u0438\u0442\u0430 \u043e\u0442 \u0432\u0438\u0440\u0443\u0441\u043e\u0432\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 id', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('id');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0441\u0435\u0440\u0432\u0438\u0441 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/admin/services", "host": ["{{baseUrl}}"], "path": ["admin", "services"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\u0425\u0430\u043a\",\n  \"price\": 0.01,\n  \"description\": \"\u0422\u0435\u0441\u0442\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 SERVICE_MANAGE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u0441\u043e\u0437\u0434\u0430\u0451\u0442 \u0441\u0435\u0440\u0432\u0438\u0441 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/admin/services", "host": ["{{baseUrl}}"], "path": ["admin", "services"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Manager \u0441\u0435\u0440\u0432\u0438\u0441\",\n  \"price\": 100.00,\n  \"description\": \"\u0422\u0435\u0441\u0442\"\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 SERVICE_MANAGE', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "11. \u0410\u0434\u043c\u0438\u043d \u2014 \u043f\u0435\u0440\u0435\u0438\u043d\u0434\u0435\u043a\u0441\u0430\u0446\u0438\u044f (SEARCH_REINDEX \u2014 \u0442\u043e\u043b\u044c\u043a\u043e ADMIN)",
+      "item": [
+        {
+          "name": "ADMIN \u043f\u0435\u0440\u0435\u0438\u043d\u0434\u0435\u043a\u0441\u0438\u0440\u0443\u0435\u0442 \u2192 200",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs/reindex", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs", "reindex"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{adminEmail}}" },
+                { "key": "password", "value": "{{adminPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 reindexed', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('reindexed');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "USER \u043f\u0435\u0440\u0435\u0438\u043d\u0434\u0435\u043a\u0441\u0438\u0440\u0443\u0435\u0442 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs/reindex", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs", "reindex"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 SEARCH_REINDEX', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u043f\u0435\u0440\u0435\u0438\u043d\u0434\u0435\u043a\u0441\u0438\u0440\u0443\u0435\u0442 \u2192 403",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/admin/tariffs/reindex", "host": ["{{baseUrl}}"], "path": ["admin", "tariffs", "reindex"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 \u043f\u0440\u0438\u0432\u0438\u043b\u0435\u0433\u0438\u0438 SEARCH_REINDEX', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "12. \u0411\u0430\u043b\u0430\u043d\u0441 \u2014 \u0447\u0442\u0435\u043d\u0438\u0435 (\u043b\u044e\u0431\u043e\u0439 \u0430\u0443\u0442\u0435\u043d\u0442\u0438\u0444\u0438\u0446\u0438\u0440\u043e\u0432\u0430\u043d\u043d\u044b\u0439)",
+      "item": [
+        {
+          "name": "USER \u0447\u0438\u0442\u0430\u0435\u0442 \u0431\u0430\u043b\u0430\u043d\u0441 \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u0441\u043e\u0434\u0435\u0440\u0436\u0438\u0442 amount \u0438 currency', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('amount');",
+                  "  pm.expect(body).to.have.property('currency');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u0411\u0435\u0437 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438 \u2192 401",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "13. \u041b\u0438\u0447\u043d\u044b\u0439 \u043a\u0430\u0431\u0438\u043d\u0435\u0442 \u2014 \u0437\u0430\u044f\u0432\u043a\u0438 (APPLICATION_READ_OWN)",
+      "item": [
+        {
+          "name": "USER \u0447\u0438\u0442\u0430\u0435\u0442 \u0441\u0432\u043e\u0438 \u0437\u0430\u044f\u0432\u043a\u0438 \u0447\u0435\u0440\u0435\u0437 /account \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/account/applications", "host": ["{{baseUrl}}"], "path": ["account", "applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{userEmail}}" },
+                { "key": "password", "value": "{{userPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u2014 \u043c\u0430\u0441\u0441\u0438\u0432 \u0437\u0430\u044f\u0432\u043e\u043a', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER \u0447\u0438\u0442\u0430\u0435\u0442 \u0447\u0435\u0440\u0435\u0437 /account \u2192 403",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/account/applications", "host": ["{{baseUrl}}"], "path": ["account", "applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 403 Forbidden \u2014 \u043d\u0435\u0442 APPLICATION_READ_OWN', () => {",
+                  "  pm.response.to.have.status(403);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "14. Demo \u044d\u043d\u0434\u043f\u043e\u0438\u043d\u0442\u044b (\u043f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0435, \u0431\u0435\u0437 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438)",
+      "item": [
+        {
+          "name": "\u0421\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u0435 \u0437\u0430\u044f\u0432\u043a\u0438 (\u0431\u0435\u0437 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/demo/state/{{applicationId}}", "host": ["{{baseUrl}}"], "path": ["api", "demo", "state", "{{applicationId}}"] },
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK \u2014 \u043f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u044d\u043d\u0434\u043f\u043e\u0438\u043d\u0442', () => pm.response.to.have.status(200));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "\u0412\u0441\u0435 \u0441\u043e\u0441\u0442\u043e\u044f\u043d\u0438\u044f (\u0431\u0435\u0437 \u0430\u0432\u0442\u043e\u0440\u0438\u0437\u0430\u0446\u0438\u0438) \u2192 200",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/api/demo/state/all", "host": ["{{baseUrl}}"], "path": ["api", "demo", "state", "all"] },
+            "auth": { "type": "noauth" }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK \u2014 \u043f\u0443\u0431\u043b\u0438\u0447\u043d\u044b\u0439 \u044d\u043d\u0434\u043f\u043e\u0438\u043d\u0442', () => pm.response.to.have.status(200));",
+                  "pm.test('\u041e\u0442\u0432\u0435\u0442 \u2014 \u043c\u0430\u0441\u0441\u0438\u0432', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.be.an('array');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "15. Списание баланса при одобрении (MANAGER approve → billing deduct)",
+      "item": [
+        {
+          "name": "POORUSER создаёт заявку 1 (тариф 350₽) → 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{poorUserEmail}}" },
+                { "key": "password", "value": "{{poorUserPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tariffId\": 4,\n  \"address\": \"ул. Тестовая, д. 1\",\n  \"additionalServiceIds\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Статус заявки — PENDING', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "  pm.collectionVariables.set('poorAppId1', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "POORUSER создаёт заявку 2 (тариф 350₽) → 201",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": { "raw": "{{baseUrl}}/applications", "host": ["{{baseUrl}}"], "path": ["applications"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{poorUserEmail}}" },
+                { "key": "password", "value": "{{poorUserPassword}}" }
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"tariffId\": 4,\n  \"address\": \"ул. Тестовая, д. 2\",\n  \"additionalServiceIds\": []\n}"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.test('Сохраняем ID для reject-теста', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.status).to.eql('PENDING');",
+                  "  pm.collectionVariables.set('poorAppId2', body.id);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Баланс POORUSER до одобрения → 500₽",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{poorUserEmail}}" },
+                { "key": "password", "value": "{{poorUserPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Баланс равен 500', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(Number(body.amount)).to.equal(500);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER одобряет заявку 1 → 200, баланс списывается",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications/{{poorAppId1}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{poorAppId1}}", "approve"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 202 Accepted', () => pm.response.to.have.status(202));",
+                  "pm.test('Тело содержит applicationId, correlationId и status=ACCEPTED', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body.applicationId).to.eql(Number(pm.collectionVariables.get('applicationId')));",
+                  "  pm.expect(body).to.have.property('correlationId');",
+                  "  pm.expect(body.status).to.eql('ACCEPTED');",
+                  "  pm.collectionVariables.set('approvalCorrelationId', body.correlationId);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "Баланс POORUSER после одобрения → 150₽",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/account/balance", "host": ["{{baseUrl}}"], "path": ["account", "balance"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{poorUserEmail}}" },
+                { "key": "password", "value": "{{poorUserPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Баланс уменьшился на 350 → стал 150', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(Number(body.amount)).to.equal(150);",
+                  "});"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "MANAGER одобряет заявку 2 — недостаточно средств → 402",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": { "raw": "{{baseUrl}}/applications/{{poorAppId2}}/approve", "host": ["{{baseUrl}}"], "path": ["applications", "{{poorAppId2}}", "approve"] },
+            "auth": {
+              "type": "basic",
+              "basic": [
+                { "key": "username", "value": "{{managerEmail}}" },
+                { "key": "password", "value": "{{managerPassword}}" }
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status 402 Payment Required — недостаточно средств', () => {",
+                  "  pm.response.to.have.status(402);",
+                  "});",
+                  "pm.test('Тело содержит поле error', () => {",
+                  "  const body = pm.response.json();",
+                  "  pm.expect(body).to.have.property('error');",
+                  "  pm.expect(body.error).to.eql('Insufficient funds');",
+                  "});"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

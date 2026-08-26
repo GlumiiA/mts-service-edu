@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<users>
+                                                    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="user@test.com" passwordHash="$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi" role="USER"/>
+                                                    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="admin@test.com" passwordHash="$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi" role="ADMIN"/>
+                                                    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="manager@test.com" passwordHash="$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi" role="MANAGER"/>
+                                                
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="newuser_1775639990@test.com" passwordHash="$2a$10$DsomPNEFbNwTSYRXRaya4eE/VzAu7dZ5x93EtIKVKhVT7BCOHMsWO" role="USER"/>
+                                            
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="newuser_1775660196@test.com" passwordHash="$2a$10$9L.EpFtRrSg6yWE.3KJAKeiCRrVce91GfXAh38KQLIwjpgmJVCa0u" role="USER"/>
+                                        
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="newuser_1776204726@test.com" passwordHash="$2a$10$hZd9zyTkkQbXoF3TuHR8OusRU9Ykmj8FMObMsfiMwX1/1ElyKBs.u" role="USER"/>
+                                        
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="pooruser@test.com" passwordHash="$2a$10$92IXUNpkjO0rOQ5byMi.Ye4oKoEa3Ro9llC/.og/at2.uheWG/igi" role="USER"/>
+                                    
+    
+    
+    
+    
+    
+    
+    
+    
+    <user email="newuser_1778798464@test.com" passwordHash="$2a$10$EMhuM519hmkCmfUicjit0u27DbIVe.rvyd7Fw7UCi64XZQOwZcF6S" role="USER"/>
+                                
+    
+    
+    
+    
+    
+    
+    
+    <user email="newuser_1778844749@test.com" passwordHash="$2a$10$jrmEEpAcBRoVu8.1Vn21AOOoS2KiOAQ7Wlo0OeHAowBdAPBTPZ2ce" role="USER"/>
+                            
+    
+    
+    
+    
+    
+    
+    <user email="newuser_1778844791@test.com" passwordHash="$2a$10$vPsQx4lSL2Hwo5ncIRQd5u30FjjRBP.gLXnfAALDy76sok4aD.ezu" role="USER"/>
+                        
+    
+    
+    
+    
+    
+    <user email="newuser_1778844819@test.com" passwordHash="$2a$10$tEt5mCeVKvSNGu1gMoXA0OAM7p0D0f0uFJKulUm/ort7jYfMFqZXm" role="USER"/>
+                    
+    
+    
+    
+    
+    <user email="newuser_1778844880@test.com" passwordHash="$2a$10$7nUKa1hy7q.V9c3w.v.gcelci79H7AZ4WVVvd4BzIXovXrf2RNkCq" role="USER"/>
+                
+    
+    
+    
+    <user email="newuser_1778851165@test.com" passwordHash="$2a$10$p4OZUIQ.CMl5heYOpvuFU.sR9iYaovS72lAEy1PWgIGho5x.RKO7i" role="USER"/>
+            
+    
+    
+    <user email="newuser_1778853178@test.com" passwordHash="$2a$10$tDOWHn3sdeFJxRE79ymWVeFS96M0RGAGUQMr8bcHwVMkgB83ap.Ui" role="USER"/>
+        
+    
+    <user email="newuser_1781381101@test.com" passwordHash="$2a$10$GNmDBuPjGeIhM/XiuCdMhOGiza5z0lFF1LwfYYRjGj91ronCdy6k2" role="USER"/>
+    
+    <user email="newuser_1781559563@test.com" passwordHash="$2a$10$a8WrxvzdYCumcCiVqndoFe6PKsh8RiBRXq2jGrS1r0H5PqfDItt8a" role="USER"/>
+</users>

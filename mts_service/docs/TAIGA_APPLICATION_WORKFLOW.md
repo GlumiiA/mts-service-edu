@@ -1,0 +1,220 @@
+# Taiga Application Workflow
+
+## Цель
+
+Taiga используется как корпоративная доска обработки клиентских заявок. MTS Service остается источником истины для заявки, тарифа, пользователя, баланса и списаний, а Taiga показывает операционный этап работы менеджера.
+
+Главная бизнес-цель: менеджер может взять заявку в работу, одобрить запуск подключения или отклонить ее с Kanban-доски, а система безопасно синхронизирует это с внутренними статусами и биллингом.
+
+## Роли систем
+
+- MTS Service создает заявку, хранит деньги, проверяет баланс, списывает оплату и запускает JMS-подключение.
+- Taiga хранит карточку работы для сотрудников и отправляет webhook при изменении Kanban-статуса.
+- JMS выполняет асинхронное подключение после успешного одобрения и списания.
+
+Taiga не должна быть единственным источником бизнес-данных. Новую клиентскую заявку нужно создавать через `POST /applications`, а не вручную в Taiga, потому что для заявки нужны пользователь, тариф, адрес, цена и проверка баланса.
+
+## Колонки Taiga
+
+| Колонка Taiga | Внутренний смысл | Внутренний статус |
+| --- | --- | --- |
+| _(нет карточки)_ | Заявка сохранена, story в Taiga создается асинхронно. | `PENDING_TAIGA_SYNC` |
+| `New` | Заявка создана и ожидает реакции менеджера. | `PENDING` |
+| `In progress` | Менеджер взял заявку в работу. Деньги еще не списываются. | `PROCESSING` |
+| `Ready for test` | Менеджер одобрил заявку для запуска подключения. Это approval gate. | `APPROVED` после успешного списания |
+| `Done` | Подключение завершено системой. | `CONNECTED` |
+| `Archived` | Заявка отклонена или закрыта без подключения. | `REJECTED` |
+
+`Ready for test` нужен как безопасный промежуточный статус. Если списывать деньги при переносе в `In progress`, менеджер может случайно запустить оплату, просто взяв заявку в работу. Если списывать деньги при переносе в `Done`, то человек вручную ставит финальный статус до того, как система реально подключила услугу. Поэтому `Ready for test` лучше трактовать как "одобрено, можно запускать автоматический процесс".
+
+## Разрешенные переходы
+
+| Переход в Taiga | Разрешен | Что делает MTS Service |
+| --- | --- | --- |
+| `New -> In progress` | Да | Переводит заявку из `PENDING` в `PROCESSING`. Деньги не списывает. |
+| `New -> Archived` | Да | Отклоняет заявку: `REJECTED`, списания нет. |
+| `In progress -> Ready for test` | Да | Проверяет баланс, списывает сумму, ставит `APPROVED`, кладет сообщение подключения в outbox/JMS. |
+| `Ready for test -> Done` | Только система | После JMS-подключения ставит `CONNECTED` и переводит карточку в `Done`. |
+| `Ready for test -> Archived` | Нет в первой версии | После списания отмена требует отдельной логики возврата денег, поэтому переход нужно отклонять или возвращать обратно. |
+| `New -> Ready for test` | Нет | Система возвращает карточку в `New` и пишет комментарий, что сначала нужно взять заявку в работу. |
+| `New -> Done` | Нет | Система возвращает карточку в `New`; подключение не запускалось. |
+| `In progress -> Done` | Нет | Система возвращает карточку в `In progress`; нужно пройти `Ready for test`. |
+| `Done -> Archived` | Нет в первой версии | Подключенная заявка является финальной. Для отключения нужен отдельный бизнес-процесс. |
+| `Archived -> Done` | Нет | Отклоненная заявка не может стать подключенной без новой заявки. |
+| `Archived -> New` | Нет в первой версии | Повторное открытие лучше делать отдельным admin endpoint, чтобы не потерять причину отклонения. |
+
+Taiga физически может позволить перетащить карточку куда угодно. Поэтому webhook должен валидировать переход. Если переход запрещен, MTS Service не меняет заявку, возвращает карточку в предыдущую разрешенную колонку и добавляет комментарий с причиной.
+
+## Что делать при недостатке средств
+
+Если менеджер переносит карточку `In progress -> Ready for test`, система выполняет approval-flow:
+
+1. Блокирует заявку в транзакции.
+2. Проверяет, что текущий статус `PROCESSING`.
+3. Проверяет наличие `taigaTaskId`.
+4. Проверяет баланс пользователя.
+5. Если денег хватает: списывает деньги, пишет `DEBIT`, ставит `APPROVED`, отправляет событие подключения в outbox/JMS.
+6. Если денег не хватает: ставит `REJECTED`, указывает причину `Not enough funds`, переводит карточку в `Archived`, добавляет комментарий в Taiga.
+
+В этом сценарии менеджеру не нужно самому решать, куда переносить карточку после ошибки. Он переносит только в промежуточное состояние `Ready for test`, а система сама выбирает результат: `Ready for test`/`APPROVED` при успехе или `Archived`/`REJECTED` при нехватке средств.
+
+## События и действия
+
+### Создание заявки
+
+Источник: `POST /applications`.
+
+Создание заявки и создание user story в Taiga разнесены по двум транзакциям и связаны через transactional outbox + JMS, по той же схеме, что approval/connection (см. `ConnectionRequestedMessage`/`ApprovalRequestedMessage`). Это сделано, чтобы не держать XA-транзакцию БД на время блокирующего HTTP-вызова в Taiga и не оставлять "осиротевшие" user story при сбое коммита.
+
+Действия:
+
+1. MTS Service проверяет баланс, сохраняет заявку со статусом `PENDING_TAIGA_SYNC` (`taigaTaskId = null`) и в той же транзакции кладет `TaigaStoryRequestedMessage` в outbox. Ответ `POST /applications` возвращается клиенту сразу после этого шага.
+2. `OutboxDispatcher` (Quartz, интервал `app.quartz.outbox.dispatch-interval-ms`) отправляет сообщение в очередь `app.messaging.taiga-sync.queue-address`.
+3. `TaigaSyncCommandListener` (`@JmsListener`, транзакция JTA) принимает сообщение, регистрирует его в inbox (`taiga-sync-listener`) и вызывает `ApplicationTaigaSyncWorkflowService.createStoryForApplication`.
+4. При успехе: создается user story в Taiga (карточка в `New`), `taigaTaskId` сохраняется, статус меняется на `PENDING`.
+5. При ошибке Taiga (недоступность/неверный токен): сообщение возвращается в очередь (JMS redelivery), `JMSXDeliveryCount` логируется. После `app.messaging.taiga-sync.max-delivery-attempts` неудачных попыток заявка переводится в `FAILED_EXTERNAL` с `rejectReason = "Taiga integration unavailable: ..."`, что видно через `GET /applications/{id}`, плюс ERROR в логах.
+
+Заявка в статусе `PENDING_TAIGA_SYNC`/`FAILED_EXTERNAL` не имеет `taigaTaskId`, поэтому webhook-переходы и approve/reject на ней не применимы — это ожидаемо, т.к. webhook ищет заявку по `taigaTaskId`.
+
+### Менеджер берет заявку в работу
+
+Источник: webhook Taiga, переход `New -> In progress`.
+
+Действия:
+
+1. Найти заявку по `taigaTaskId`.
+2. Проверить, что статус `PENDING`.
+3. Поставить `PROCESSING`.
+4. Добавить комментарий в Taiga: `Application is taken into processing`.
+
+Списания нет.
+
+### Менеджер одобряет запуск подключения
+
+Источник: webhook Taiga, переход `In progress -> Ready for test`.
+
+Действия:
+
+1. Найти заявку по `taigaTaskId`.
+2. Проверить, что статус `PROCESSING`.
+3. Проверить баланс.
+4. При успехе списать деньги и поставить `APPROVED`.
+5. Отправить `ConnectionRequestedMessage` через outbox/JMS.
+6. Оставить карточку в `Ready for test` до завершения JMS-подключения.
+
+Если денег не хватает, заявка становится `REJECTED`, карточка переводится в `Archived`.
+
+### Подключение завершено
+
+Источник: JMS connection listener.
+
+Действия:
+
+1. Проверить, что заявка `APPROVED`.
+2. Поставить `CONNECTED`.
+3. Перевести Taiga user story в `Done`.
+4. Добавить комментарий: `Connection completed automatically`.
+
+`Done` является системным финальным статусом. Менеджер не должен вручную переводить заявку в `Done`.
+
+### Отклонение заявки
+
+Источник: webhook Taiga, переход `New -> Archived` или `In progress -> Archived`.
+
+Действия:
+
+1. Если деньги еще не списаны, поставить `REJECTED`.
+2. Сохранить причину отклонения. В первой версии можно использовать стандартную причину `Rejected from Taiga`.
+3. Комментарий в Taiga фиксирует, что заявка отклонена без списания.
+
+Если заявка уже `APPROVED` или `CONNECTED`, переход в `Archived` запрещен в первой версии.
+
+## Правила идемпотентности
+
+Webhook может прийти повторно. Обработка должна быть идемпотентной:
+
+- повторный `New -> In progress` для уже `PROCESSING` ничего не меняет;
+- повторный `In progress -> Ready for test` не должен списывать деньги второй раз;
+- если есть `DEBIT` для `applicationId`, повторное списание запрещено;
+- повторный перевод в `Done` для `CONNECTED` ничего не меняет.
+
+Для списаний желательно добавить проверку уникальности `DEBIT` по `application_id` или отдельный idempotency key.
+
+## План реализации
+
+1. Добавить настройки Taiga-статусов:
+   - `app.taiga.status.new-id`
+   - `app.taiga.status.in-progress-id`
+   - `app.taiga.status.ready-for-test-id`
+   - `app.taiga.status.done-id`
+   - `app.taiga.status.archived-id`
+
+   ID статусов можно получить через Taiga API:
+
+   ```bash
+   curl -s "http://localhost:9000/api/v1/userstory-statuses?project=1" \
+     -H "Authorization: Bearer <taiga_token>"
+   ```
+
+   Затем нужно сопоставить реальные ID колонок с настройками приложения.
+
+2. Расширить Taiga JCA connector:
+   - `getUserStory(long id)`
+   - `updateUserStoryStatus(long userStoryId, long statusId, long version)`
+   - `createComment(long userStoryId, String comment)`
+
+3. Расширить `TaigaTaskService`:
+   - метод перевода карточки в нужную колонку;
+   - метод добавления комментария;
+   - метод возврата карточки в предыдущую разрешенную колонку при запрещенном переходе.
+
+4. Научить создание заявки явно ставить Taiga-статус `New`, если API Taiga требует статус при создании.
+
+5. Расширить `TaigaWebhookService`:
+   - распарсить `data.id`, `data.version`, `data.status.id`, `data.status.name`, `change.diff.status`;
+   - найти `Application` по `taigaTaskId`;
+   - определить переход из старого и нового статуса;
+   - передать переход в отдельный workflow service.
+
+6. Добавить `TaigaApplicationWorkflowService`:
+   - `handleMovedToInProgress(application, event)`
+   - `handleMovedToReadyForTest(application, event)`
+   - `handleMovedToArchived(application, event)`
+   - `rejectInvalidTransition(application, event, reason)`
+
+7. Разделить текущий approve-flow:
+   - `markProcessingFromTaiga(...)` без списания;
+   - `approveAndDebitFromTaiga(...)` со списанием и outbox;
+   - существующий HTTP `POST /applications/{id}/approve` можно оставить как альтернативный путь или перевести на тот же сервисный метод.
+
+8. Добавить защиту от двойного списания:
+   - метод `existsDebitByApplicationId`;
+   - проверка перед `localBillingService.debit`;
+   - желательно миграция с частичным unique index для `billing_transactions(application_id, type='DEBIT')`.
+
+9. Обновлять Taiga из системных событий:
+   - после успешного создания заявки: `New`;
+   - после JMS `CONNECTED`: `Done`;
+   - при нехватке средств во время approval: `Archived` с комментарием.
+
+10. Добавить тесты:
+    - webhook `New -> In progress` не списывает деньги;
+    - webhook `In progress -> Ready for test` списывает деньги один раз и отправляет outbox;
+    - недостаток средств переводит в `REJECTED` и `Archived`;
+    - запрещенный `Archived -> Done` не меняет внутренний статус;
+    - повторный webhook не делает повторный `DEBIT`.
+
+11. Обновить Postman collection:
+    - сценарий Taiga-driven approval;
+    - проверка баланса до/после;
+    - проверка `GET /api/demo/state/{applicationId}`.
+
+## Рекомендуемое правило для менеджера
+
+Менеджер вручную использует только три действия:
+
+- `New -> In progress`: взять заявку в работу.
+- `In progress -> Ready for test`: одобрить запуск подключения.
+- `New/In progress -> Archived`: отклонить до списания.
+
+Все остальное делает система. `Done` ставится только автоматически после успешного подключения.

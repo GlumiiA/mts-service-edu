@@ -4,7 +4,9 @@ import jakarta.persistence.*;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
 import org.hibernate.annotations.CreationTimestamp;
+import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.annotations.UpdateTimestamp;
+import org.hibernate.type.SqlTypes;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -26,7 +28,8 @@ public class Tariff {
 
     @NotNull
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
     private TariffCategory category;
 
     @Column(precision = 10, scale = 2)
@@ -34,7 +37,8 @@ public class Tariff {
 
     @NotNull
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, length = 20)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(nullable = false)
     private TariffStatus status = TariffStatus.ACTIVE;
 
     @Column(columnDefinition = "TEXT")
@@ -70,7 +74,8 @@ public class Tariff {
 
     // Поля для DEVICES
     @Enumerated(EnumType.STRING)
-    @Column(name = "device_type", length = 10)
+    @JdbcTypeCode(SqlTypes.NAMED_ENUM)
+    @Column(name = "device_type")
     private DeviceType deviceType;
 
     // Поля для LANDLINE

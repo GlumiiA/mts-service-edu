@@ -10,6 +10,8 @@ import ru.aigul.mts_service.search.TariffSearchService;
 import ru.aigul.mts_service.search.SearchResult;
 import ru.aigul.mts_service.service.CatalogService;
 
+import org.springframework.security.access.prepost.PreAuthorize;
+
 import jakarta.servlet.http.HttpServletResponse;
 import java.math.BigDecimal;
 import java.util.List;
@@ -17,6 +19,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/catalog")
 @RequiredArgsConstructor
+@PreAuthorize("hasAuthority('CATALOG_READ')")
 public class CatalogController {
 
     private final CatalogService catalogService;

@@ -1,7 +1,9 @@
 package ru.aigul.mts_service.service;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Limit;
+import org.springframework.security.core.Authentication;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Isolation;
 import org.springframework.transaction.annotation.Transactional;
@@ -10,33 +12,48 @@ import ru.aigul.mts_service.dto.application.*;
 import ru.aigul.mts_service.exception.ApplicationNotFoundException;
 import ru.aigul.mts_service.exception.InsufficientFundsException;
 import ru.aigul.mts_service.exception.InvalidApplicationStatusException;
-import ru.aigul.mts_service.exception.AccessDeniedException;
 import ru.aigul.mts_service.exception.TariffNotFoundException;
 import ru.aigul.mts_service.exception.UserNotFoundException;
 import ru.aigul.mts_service.mapper.ApplicationMapper;
-import ru.aigul.mts_service.model.*;
-import ru.aigul.mts_service.repository.*;
+import ru.aigul.mts_service.mapper.ApplicationEntityMapper;
+import ru.aigul.mts_service.messaging.dto.TaigaStoryRequestedMessage;
+import ru.aigul.mts_service.messaging.outbox.OutboxService;
+import ru.aigul.mts_service.integration.taiga.TaigaTaskService;
+import ru.aigul.mts_service.model.Application;
+import ru.aigul.mts_service.model.ApplicationStatus;
+import ru.aigul.mts_service.model.Tariff;
+import ru.aigul.mts_service.model.TariffCityPrice;
+import ru.aigul.mts_service.model.User;
+import ru.aigul.mts_service.repository.ApplicationRepository;
+import ru.aigul.mts_service.repository.ServiceRepository;
+import ru.aigul.mts_service.repository.TariffCityPriceRepository;
+import ru.aigul.mts_service.repository.TariffRepository;
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
+import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-
-import java.util.Collections;
 import java.util.Optional;
+import java.util.UUID;
 
 @Service
+@Slf4j
 @RequiredArgsConstructor
 public class ApplicationService {
 
     private final ApplicationRepository applicationRepository;
     private final TariffRepository tariffRepository;
     private final TariffCityPriceRepository tariffCityPriceRepository;
-    private final UserRepository userRepository;
-    private final BalanceRepository balanceRepository;
     private final ServiceRepository serviceRepository;
     private final ApplicationMapper applicationMapper;
     private final UserService userService;
+    private final LocalBillingService localBillingService;
+    private final ApplicationEntityMapper applicationEntityMapper;
+    private final OutboxService outboxService;
+    private final TaigaTaskService taigaTaskService;
 
+    @Transactional(readOnly = true)
     public List<Application> getApplicationsForUserEmail(String email) {
         Optional<User> userOpt = userService.findByEmail(email);
         if (userOpt.isEmpty()) {
@@ -48,9 +65,9 @@ public class ApplicationService {
     }
 
     @Transactional(isolation = Isolation.REPEATABLE_READ)
-    public ApplicationDto create(Long userId, ApplicationCreateDto dto) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(userId));
+    public ApplicationDto create(String email, ApplicationCreateDto dto) {
+        User user = userService.findByEmail(email)
+                .orElseThrow(() -> new UserNotFoundException(email));
 
         Tariff tariff = tariffRepository.findById(dto.getTariffId())
                 .orElseThrow(() -> new TariffNotFoundException(dto.getTariffId()));
@@ -68,32 +85,43 @@ public class ApplicationService {
         BigDecimal totalPrice = tariffPrice;
 
         List<ru.aigul.mts_service.model.Service> additionalServices = List.of();
-        if (!dto.getAdditionalServiceIds().isEmpty()) {
-            additionalServices = serviceRepository.findAllById(dto.getAdditionalServiceIds());
+        List<Long> additionalIds = dto.getAdditionalServiceIds();
+        if (additionalIds != null && !additionalIds.isEmpty()) {
+            additionalServices = serviceRepository.findAllById(additionalIds);
             for (ru.aigul.mts_service.model.Service s : additionalServices) {
                 totalPrice = totalPrice.add(s.getPrice());
             }
         }
 
-        Balance balance = balanceRepository.findByUserId(userId)
-                .orElseThrow(() -> new InsufficientFundsException());
-        if (balance.getAmount().compareTo(totalPrice) < 0) {
+        BigDecimal availableBalance = localBillingService.getBalance(user);
+        if (availableBalance.compareTo(totalPrice) < 0) {
             throw new InsufficientFundsException();
         }
 
-        Application application = new Application();
-        application.setUser(user);
-        application.setTariff(tariff);
-        application.setAddress(dto.getAddress());
-        application.setStatus(ApplicationStatus.PENDING);
-        application.setAdditionalServices(new HashSet<>(additionalServices));
+        Application application = applicationEntityMapper.fromCreateDto(
+                user,
+                tariff,
+                dto,
+                totalPrice,
+                new HashSet<>(additionalServices)
+        );
 
         application = applicationRepository.save(application);
+
+        outboxService.enqueueTaigaStoryRequested(new TaigaStoryRequestedMessage(
+                UUID.randomUUID().toString(), application.getId(), null, OffsetDateTime.now()));
+
         return applicationMapper.toDto(application);
     }
 
     @Transactional(readOnly = true)
-    public CursorPage<ApplicationDto> list(Long userId, ApplicationStatus status, Long after, int limit) {
+    public CursorPage<ApplicationDto> list(Authentication auth, ApplicationStatus status, Long after, int limit) {
+        Long userId = null;
+        if (!auth.getAuthorities().stream().anyMatch(a -> a.getAuthority().equals("APPLICATION_READ_ALL"))) {
+            userId = userService.findByEmail(auth.getName())
+                    .orElseThrow(() -> new UserNotFoundException(auth.getName()))
+                    .getId();
+        }
         List<Application> raw = applicationRepository.findAllFiltered(userId, status, after, Limit.of(limit + 1));
         return CursorPage.of(raw, limit, applicationMapper::toDto, Application::getId);
     }
@@ -105,33 +133,8 @@ public class ApplicationService {
         return applicationMapper.toDetailDto(application);
     }
 
-    @Transactional(isolation = Isolation.SERIALIZABLE)
-    public ApplicationDto approve(Long userId, Long applicationId) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(userId));
-        if (user.getRole() != Role.MANAGER) {
-            throw new AccessDeniedException("Only manager can approve applications");
-        }
-
-        Application application = applicationRepository.findById(applicationId)
-                .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
-
-        if (application.getStatus() != ApplicationStatus.PENDING) {
-            throw new InvalidApplicationStatusException("Application already processed");
-        }
-
-        application.setStatus(ApplicationStatus.APPROVED);
-        application = applicationRepository.save(application);
-        return applicationMapper.toDto(application);
-    }
-    @Transactional(isolation = Isolation.SERIALIZABLE)
-    public ApplicationDto reject(Long userId, Long applicationId, ApplicationRejectDto dto) {
-        User user = userRepository.findById(userId)
-                .orElseThrow(() -> new UserNotFoundException(userId));
-        if (user.getRole() != Role.MANAGER) {
-            throw new AccessDeniedException("Only manager can reject applications");
-        }
-
+    @Transactional
+    public ApplicationDto reject(Long applicationId, ApplicationRejectDto dto) {
         Application application = applicationRepository.findById(applicationId)
                 .orElseThrow(() -> new ApplicationNotFoundException(applicationId));
 
@@ -142,6 +145,7 @@ public class ApplicationService {
         application.setStatus(ApplicationStatus.REJECTED);
         application.setRejectReason(dto.getReason());
         application = applicationRepository.save(application);
+        taigaTaskService.moveApplicationToArchived(application, dto.getReason());
         return applicationMapper.toDto(application);
     }
 }
